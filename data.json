@@ -1,0 +1,96 @@
+{
+ "asOf": "2026-09-28",
+ "yearAgo": "2025-09-26",
+ "indices": [
+  {
+   "name": "Nifty 50",
+   "price": 22780.25,
+   "pe": 19.26,
+   "peAgo": 21.66,
+   "priceChange": -7.602810011884142,
+   "peChange": -11.080332409972293,
+   "epsGrowth": 3.910858522460492,
+   "label": "Fair / Stagnant"
+  },
+  {
+   "name": "Nifty Next 50",
+   "price": 70309.5,
+   "pe": 18.59,
+   "peAgo": 20.77,
+   "priceChange": 4.713012668860439,
+   "peChange": -10.495907558979301,
+   "epsGrowth": 16.992429969458378,
+   "label": "Attractive valuation"
+  },
+  {
+   "name": "Nifty Midcap 150",
+   "price": 22071.3,
+   "pe": 27.6,
+   "peAgo": 32.44,
+   "priceChange": 5.26308259112207,
+   "peChange": -14.919852034525272,
+   "epsGrowth": 23.72226084260869,
+   "label": "Attractive valuation"
+  },
+  {
+   "name": "Nifty Smallcap 250",
+   "price": 17863.2,
+   "pe": 32.96,
+   "peAgo": 28.68,
+   "priceChange": 7.073625405350348,
+   "peChange": 14.92329149232916,
+   "epsGrowth": -6.83035265092694,
+   "label": "High risk / Overvalued"
+  },
+  {
+   "name": "Nifty Bank",
+   "price": 54471.65,
+   "pe": 12.89,
+   "peAgo": 14.81,
+   "priceChange": 0.15131638822674098,
+   "peChange": -12.964213369345035,
+   "epsGrowth": 15.069123018591002,
+   "label": "Attractive valuation"
+  },
+  {
+   "name": "Nifty 500",
+   "price": 22232.15,
+   "pe": 21.54,
+   "peAgo": 23.56,
+   "priceChange": -2.117715948690513,
+   "peChange": -8.57385398981324,
+   "epsGrowth": 7.061588312388634,
+   "label": "Fair / Stagnant"
+  },
+  {
+   "name": "Nifty LargeMidcap 250",
+   "price": 15888.7,
+   "pe": 22.64,
+   "peAgo": 25.83,
+   "priceChange": -0.17873802785045578,
+   "peChange": -12.34998064266356,
+   "epsGrowth": 13.886183601617596,
+   "label": "Fair / Stagnant"
+  },
+  {
+   "name": "Nifty IT",
+   "price": 28086.5,
+   "pe": 17.92,
+   "peAgo": 24.34,
+   "priceChange": -16.662215892231913,
+   "peChange": -26.37633525061627,
+   "epsGrowth": 13.194289351734101,
+   "label": "Fair / Stagnant"
+  },
+  {
+   "name": "Nifty FMCG",
+   "price": 45264.35,
+   "pe": 31.4,
+   "peAgo": 41.11,
+   "priceChange": -17.472430400264017,
+   "peChange": -23.61955728533204,
+   "epsGrowth": 8.048037778507865,
+   "label": "Fair / Stagnant"
+  }
+ ]
+}
