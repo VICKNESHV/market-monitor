@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Nifty Valuation Dashboard</title>
+<style>
+:root{--bg:#f7f7f5;--card:#fff;--tx:#1c1c1a;--mut:#6b6b66;--bd:#e2e2dc;--up:#1a7f4b;--dn:#c0392b;--wa:#b7791f}
+@media (prefers-color-scheme:dark){:root{--bg:#151514;--card:#1f1f1d;--tx:#eeeeea;--mut:#9a9a92;--bd:#33332f;--up:#4cc38a;--dn:#ff7b6b;--wa:#e5b25d}}
+body{margin:0;padding:16px;background:var(--bg);color:var(--tx);font:15px/1.45 system-ui,sans-serif;max-width:1000px;margin-inline:auto}
+h1{font-size:20px;margin:0 0 4px}.s{color:var(--mut);font-size:13px;margin:0 0 16px}
+.card{background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:14px;margin-bottom:14px}
+.top{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+.tag{padding:2px 10px;border-radius:99px;font-size:12px;font-weight:600;border:1px solid currentColor}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:8px;margin-top:10px}
+small{display:block;color:var(--mut);font-size:11px}b{font-size:16px}
+.bar{display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--bd);margin-top:10px}
+.bar i{display:block}.up{color:var(--up)}.dn{color:var(--dn)}.wa{color:var(--wa)}
+</style></head><body>
+<h1>Nifty Valuation Dashboard</h1>
+<p class="s" id="meta">Loading…</p>
+<div id="app"></div>
+<script>
+const f=x=>(x>0?"+":"")+x.toFixed(1)+"%", cl=x=>x>0?"up":x<0?"dn":"";
+const lc=l=>/Overvalued|risk/.test(l)?"dn":/Attractive|growth/.test(l)?"up":"wa";
+fetch("data.json").then(r=>{if(!r.ok)throw new Error(r.status);return r.json()}).then(d=>{
+ document.getElementById("meta").textContent="NSE data as of "+d.asOf+" vs "+d.yearAgo+". EPS = index close ÷ PE. Updated automatically each weekday.";
+ document.getElementById("app").innerHTML=d.indices.map(m=>{
+  const a=Math.abs(m.epsGrowth),b=Math.abs(m.peChange),s=(a+b)||1;
+  return `<div class="card"><div class="top"><b>${m.name}</b><span class="tag ${lc(m.label)}">${m.label}</span></div>
+  <div class="grid">
+   <div><small>Price 1Y</small><b class="${cl(m.priceChange)}">${f(m.priceChange)}</b></div>
+   <div><small>EPS growth</small><b class="${cl(m.epsGrowth)}">${f(m.epsGrowth)}</b></div>
+   <div><small>PE change</small><b class="${cl(m.peChange)}">${f(m.peChange)}</b></div>
+   <div><small>PE now</small><b>${m.pe.toFixed(1)}</b></div>
+   <div><small>PE 1Y ago</small><b>${m.peAgo.toFixed(1)}</b></div></div>
+  <div class="bar"><i style="width:${a/s*100}%;background:${m.epsGrowth>=0?"var(--up)":"var(--dn)"}"></i><i style="width:${b/s*100}%;background:var(--wa)"></i></div></div>`}).join("");
+}).catch(e=>document.getElementById("meta").textContent="No data yet: run the “Update data” workflow once ("+e.message+")");
+</script></body></html>
