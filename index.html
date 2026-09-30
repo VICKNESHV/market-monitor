@@ -20,9 +20,9 @@ small{display:block;color:var(--mut);font-size:11px}b{font-size:16px}
 <div id="app"></div>
 <script>
 const f=x=>(x>0?"+":"")+x.toFixed(1)+"%", cl=x=>x>0?"up":x<0?"dn":"";
-const lc=l=>/Overvalued|risk/.test(l)?"dn":/Attractive|growth/.test(l)?"up":"wa";
+const lc=l=>/Overvalued|risk|Expensive/.test(l)?"dn":/Attractive|growth/.test(l)?"up":"wa";
 fetch("data.json").then(r=>{if(!r.ok)throw new Error(r.status);return r.json()}).then(d=>{
- document.getElementById("meta").textContent="NSE data as of "+d.asOf+" vs "+d.yearAgo+". EPS = index close ÷ PE. Updated automatically each weekday.";
+ document.getElementById("meta").textContent="NSE data as of "+d.asOf+" vs "+d.yearAgo+". EPS = index close ÷ PE. PE percentile = share of the last 5 years (monthly) with a PE at or below today’s; low = cheap for that index. Updated automatically each weekday.";
  document.getElementById("app").innerHTML=d.indices.map(m=>{
   const a=Math.abs(m.epsGrowth),b=Math.abs(m.peChange),s=(a+b)||1;
   return `<div class="card"><div class="top"><b>${m.name}</b><span class="tag ${lc(m.label)}">${m.label}</span></div>
@@ -31,7 +31,8 @@ fetch("data.json").then(r=>{if(!r.ok)throw new Error(r.status);return r.json()})
    <div><small>EPS growth</small><b class="${cl(m.epsGrowth)}">${f(m.epsGrowth)}</b></div>
    <div><small>PE change</small><b class="${cl(m.peChange)}">${f(m.peChange)}</b></div>
    <div><small>PE now</small><b>${m.pe.toFixed(1)}</b></div>
-   <div><small>PE 1Y ago</small><b>${m.peAgo.toFixed(1)}</b></div></div>
+   <div><small>PE 1Y ago</small><b>${m.peAgo.toFixed(1)}</b></div>
+   <div><small>PE percentile (5Y)</small><b>${m.pePercentile==null?"—":Math.round(m.pePercentile)}</b></div></div>
   <div class="bar"><i style="width:${a/s*100}%;background:${m.epsGrowth>=0?"var(--up)":"var(--dn)"}"></i><i style="width:${b/s*100}%;background:var(--wa)"></i></div></div>`}).join("");
 }).catch(e=>document.getElementById("meta").textContent="No data yet: run the “Update data” workflow once ("+e.message+")");
 </script></body></html>
