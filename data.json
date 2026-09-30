@@ -10,7 +10,9 @@
    "priceChange": -7.78854389504321,
    "peChange": -11.275415896487996,
    "epsGrowth": 3.929995318295054,
-   "label": "Fair / Stagnant"
+   "pePercentile": 0.0,
+   "peSamples": 60,
+   "label": "Cheap, earnings growth modest"
   },
   {
    "name": "Nifty Next 50",
@@ -20,6 +22,8 @@
    "priceChange": 2.395662422551137,
    "peChange": -12.529776083849454,
    "epsGrowth": 17.06345066717583,
+   "pePercentile": 1.6666666666666667,
+   "peSamples": 60,
    "label": "Attractive valuation"
   },
   {
@@ -30,7 +34,9 @@
    "priceChange": 3.9643196955280624,
    "peChange": -15.959409594095952,
    "epsGrowth": 23.707269538915952,
-   "label": "Attractive valuation"
+   "pePercentile": 38.333333333333336,
+   "peSamples": 60,
+   "label": "High growth"
   },
   {
    "name": "Nifty Smallcap 250",
@@ -40,6 +46,8 @@
    "priceChange": 6.486801090833816,
    "peChange": 14.310645724258286,
    "epsGrowth": -6.844370954125556,
+   "pePercentile": 88.33333333333333,
+   "peSamples": 60,
    "label": "High risk / Overvalued"
   },
   {
@@ -50,6 +58,8 @@
    "priceChange": -0.36916325443896447,
    "peChange": -13.418745785569797,
    "epsGrowth": 15.072064558930709,
+   "pePercentile": 1.6666666666666667,
+   "peSamples": 60,
    "label": "Attractive valuation"
   },
   {
@@ -60,7 +70,9 @@
    "priceChange": -2.8061796641027925,
    "peChange": -9.198813056379818,
    "epsGrowth": 7.040253115024053,
-   "label": "Fair / Stagnant"
+   "pePercentile": 11.666666666666666,
+   "peSamples": 60,
+   "label": "Cheap, earnings growth modest"
   },
   {
    "name": "Nifty LargeMidcap 250",
@@ -70,7 +82,9 @@
    "priceChange": -1.0792912173539504,
    "peChange": -13.137557959814528,
    "epsGrowth": 13.88202594728114,
-   "label": "Fair / Stagnant"
+   "pePercentile": 8.333333333333334,
+   "peSamples": 60,
+   "label": "Cheap, earnings growth modest"
   },
   {
    "name": "Nifty IT",
@@ -80,7 +94,9 @@
    "priceChange": -17.87623857145614,
    "peChange": -27.455815865187017,
    "epsGrowth": 13.205162354474353,
-   "label": "Fair / Stagnant"
+   "pePercentile": 0.0,
+   "peSamples": 60,
+   "label": "Cheap, earnings growth modest"
   },
   {
    "name": "Nifty FMCG",
@@ -90,7 +106,9 @@
    "priceChange": -18.482759373782887,
    "peChange": -24.569070162660832,
    "epsGrowth": 8.068720353842362,
-   "label": "Fair / Stagnant"
+   "pePercentile": 0.0,
+   "peSamples": 60,
+   "label": "Cheap, earnings growth modest"
   }
  ]
 }
