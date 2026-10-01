@@ -5,8 +5,33 @@ Uses: latest trading day, ~1 year ago, and ~60 monthly samples (5 years) for PE 
 import csv, io, json, time, datetime as dt, urllib.request, urllib.error
 
 URL = "https://archives.nseindia.com/content/indices/ind_close_all_{}.csv"
-NAMES = ["Nifty 50", "Nifty Next 50", "Nifty Midcap 150", "Nifty Smallcap 250",
-         "Nifty Bank", "Nifty 500", "Nifty LargeMidcap 250", "Nifty IT", "Nifty FMCG"]
+NAMES = [
+    # Broad market
+    "Nifty 50",
+    "Nifty 100",
+    "Nifty 500",
+
+    # Market-cap segments
+    "Nifty LargeMidcap 250",
+    "Nifty Next 50",
+    "Nifty Midcap 150",
+    "Nifty Midcap 50",
+    "Nifty Smallcap 250",
+    "Nifty Smallcap 50",
+    "Nifty Microcap 250",
+
+    # Sectoral
+    "Nifty Bank",
+    "Nifty Financial Services",
+    "Nifty IT",
+    "Nifty FMCG",
+    "Nifty Auto",
+    "Nifty Pharma",
+    "Nifty PSU Bank",
+
+    # Factor / Strategy
+    "Nifty500 Value 50",
+]
 GROWTH_CUTOFF = 15   # EPS growth (%) counted as strong
 CHEAP_PCT = 30       # PE percentile at or below this = cheap for itself
 EXPENSIVE_PCT = 70   # PE percentile at or above this = expensive for itself
