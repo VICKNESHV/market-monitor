@@ -1,7 +1,10 @@
 """Daily job: fetch ETF + macro prices, compute metrics, raise alerts.
+
 Writes markets.json (shown on the site) and state.json (memory between runs).
+
 Needs only the Python standard library."""
-import csv, io, json, os, time, urllib.request
+
+import csv, io, json, os, time, traceback, urllib.request
 from datetime import date, datetime, timedelta, timezone
 
 # name -> Yahoo symbol (Xetra .DE, Paris .PA). Edit freely.
@@ -14,8 +17,8 @@ MACRO = {
     "Gold": "GC=F", "Silver": "SI=F", "Brent oil": "BZ=F", "US dollar index": "DX-Y.NYB",
     "EUR/USD": "EURUSD=X", "USD/INR": "USDINR=X", "US 10Y yield": "^TNX", "Nasdaq 100": "^NDX",
 }
-YIELDS = {"US 10Y yield"}          # changes shown in points, not %
-BIG_MOVE = {"SEC0": 5}             # 1-day alert % (default 3)
+YIELDS = {"US 10Y yield"}  # changes shown in points, not %
+BIG_MOVE = {"SEC0": 5}     # 1-day alert % (default 3)
 
 
 def get(url, timeout=30, tries=1):
@@ -29,7 +32,8 @@ def get(url, timeout=30, tries=1):
             time.sleep(3)
 
 
-def yahoo(symbol, rng="5y"):
+def yahoo(symbol, rng="6y"):
+    # 6y (not 5y) so the 5-year lookback always has a data point at or before its target date
     last = None
     for host in ("query1", "query2"):
         try:
@@ -48,9 +52,9 @@ def yahoo(symbol, rng="5y"):
 
 
 def fred(series):
-    start = (date.today() - timedelta(days=400)).isoformat()   # short window = small, fast download
+    start = (date.today() - timedelta(days=400)).isoformat()  # short window = small, fast download
     url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series}&cosd={start}"
-    rows = list(csv.reader(io.StringIO(get(url, timeout=60, tries=3))))[1:]
+    rows = list(csv.reader(io.StringIO(get(url, timeout=90, tries=5))))[1:]
     return [(d, float(v)) for d, v in rows if v not in ("", ".")]
 
 
@@ -59,7 +63,7 @@ def pct(a, b):
 
 
 def summarize(name, pts, is_yield=False):
-    if is_yield and max(v for _, v in pts) > 20:      # Yahoo ^TNX is yield x10 in some feeds
+    if is_yield and max(v for _, v in pts) > 20:  # Yahoo ^TNX is yield x10 in some feeds
         pts = [(d, v / 10) for d, v in pts]
     dates = [d for d, _ in pts]
     vals = [v for _, v in pts]
@@ -76,9 +80,11 @@ def summarize(name, pts, is_yield=False):
 
     def years(n):
         target = (date.fromisoformat(dates[-1]) - timedelta(days=365 * n)).isoformat()
-        if dates[0] > (date.fromisoformat(target) + timedelta(days=10)).isoformat():
-            return None                       # fund is younger than n years
-        base = [v for d, v in pts if d <= target][-1]
+        slack = (date.fromisoformat(target) + timedelta(days=10)).isoformat()
+        if dates[0] > slack:
+            return None  # fund is younger than n years
+        older = [v for d, v in pts if d <= target]
+        base = older[-1] if older else vals[0]  # fall back to first available point
         return round(last - base, 3) if is_yield else round(pct(last, base), 2)
 
     year = vals[-252:]
@@ -204,23 +210,25 @@ def main():
             m = summarize(n, yahoo(s)); m["symbol"] = s
             etfs.append(m); alerts += etf_alerts(m)
         except Exception as e:
-            errors.append(f"ETF {n} ({s}): {e}")
+            traceback.print_exc()
+            errors.append(f"ETF {n} ({s}): {type(e).__name__}: {e}")
 
     raw = {}
     for n, s in MACRO.items():
         try:
-            pts = yahoo(s, "10y" if n in ("Gold", "Silver") else "5y")
+            pts = yahoo(s, "10y" if n in ("Gold", "Silver") else "6y")
             raw[n] = pts
             m = summarize(n, pts, n in YIELDS); m["symbol"] = s
             macro.append(m); alerts += macro_alerts(m)
         except Exception as e:
-            errors.append(f"{n} ({s}): {e}")
-            if n == "US 10Y yield":                      # fallback to FRED
+            traceback.print_exc()
+            errors.append(f"{n} ({s}): {type(e).__name__}: {e}")
+            if n == "US 10Y yield":  # fallback to FRED
                 try:
                     m = summarize(n, fred("DGS10"), True); m["symbol"] = "FRED DGS10"
                     macro.append(m); alerts += macro_alerts(m)
                 except Exception as e2:
-                    errors.append(f"US 10Y yield FRED fallback: {e2}")
+                    errors.append(f"US 10Y yield FRED fallback: {type(e2).__name__}: {e2}")
 
     ratio = None
     if "Gold" in raw and "Silver" in raw:
@@ -236,7 +244,7 @@ def main():
         if c and (date.today() - date.fromisoformat(c["date"])).days <= 30:
             alerts.append(alert("fed", "macro", f"Fed target changed {c['from']}% → {c['to']}% on {c['date']}"))
     except Exception as e:
-        errors.append(f"Fed rate (FRED): {e}")
+        errors.append(f"Fed rate: {type(e).__name__}: {e}")
 
     ia, india_state = india_alerts(state)
     alerts += ia
