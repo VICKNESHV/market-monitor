@@ -18,9 +18,15 @@ YIELDS = {"US 10Y yield"}          # changes shown in points, not %
 BIG_MOVE = {"SEC0": 5}             # 1-day alert % (default 3)
 
 
-def get(url):
+def get(url, timeout=30, tries=1):
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
-    return urllib.request.urlopen(req, timeout=30).read().decode()
+    for i in range(tries):
+        try:
+            return urllib.request.urlopen(req, timeout=timeout).read().decode()
+        except Exception:
+            if i == tries - 1:
+                raise
+            time.sleep(3)
 
 
 def yahoo(symbol, rng="2y"):
@@ -42,7 +48,9 @@ def yahoo(symbol, rng="2y"):
 
 
 def fred(series):
-    rows = list(csv.reader(io.StringIO(get(f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series}"))))[1:]
+    start = (date.today() - timedelta(days=400)).isoformat()   # short window = small, fast download
+    url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series}&cosd={start}"
+    rows = list(csv.reader(io.StringIO(get(url, timeout=60, tries=3))))[1:]
     return [(d, float(v)) for d, v in rows if v not in ("", ".")]
 
 
