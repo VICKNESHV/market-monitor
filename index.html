@@ -51,6 +51,9 @@ function card(x){
  <div class="grid"><div class="m"><small>1 day</small><b class="${cl(x.d1)}">${f(x.d1,d,u)}</b></div>
  <div class="m"><small>1 week</small><b class="${cl(x.d5)}">${f(x.d5,d,u)}</b></div>
  <div class="m"><small>1 month</small><b class="${cl(x.m1)}">${f(x.m1,d,u)}</b></div>
+ <div class="m"><small>1 year</small><b class="${cl(x.y1)}">${f(x.y1,d,u)}</b></div>
+ <div class="m"><small>2 years</small><b class="${cl(x.y2)}">${f(x.y2,d,u)}</b></div>
+ <div class="m"><small>5 years</small><b class="${cl(x.y5)}">${f(x.y5,d,u)}</b></div>
  ${y?"":`<div class="m"><small>From 1Y high</small><b class="${cl(x.fromHigh)}">${f(x.fromHigh)}</b></div>
  <div class="m"><small>200-day avg</small><b class="${cl(x.vsDma)}">${dma}</b></div>`}</div></div>`;
 }

@@ -29,7 +29,7 @@ def get(url, timeout=30, tries=1):
             time.sleep(3)
 
 
-def yahoo(symbol, rng="2y"):
+def yahoo(symbol, rng="5y"):
     last = None
     for host in ("query1", "query2"):
         try:
@@ -74,6 +74,13 @@ def summarize(name, pts, is_yield=False):
             return None
         return round(last - b, 3) if is_yield else round(pct(last, b), 2)
 
+    def years(n):
+        target = (date.fromisoformat(dates[-1]) - timedelta(days=365 * n)).isoformat()
+        if dates[0] > (date.fromisoformat(target) + timedelta(days=10)).isoformat():
+            return None                       # fund is younger than n years
+        base = [v for d, v in pts if d <= target][-1]
+        return round(last - base, 3) if is_yield else round(pct(last, base), 2)
+
     year = vals[-252:]
     high = max(year)
     dma = sum(vals[-200:]) / len(vals[-200:]) if len(vals) >= 200 else None
@@ -88,6 +95,7 @@ def summarize(name, pts, is_yield=False):
     return {
         "name": name, "last": round(last, 3), "asOf": dates[-1], "stale": stale,
         "d1": chg(1), "d5": chg(5), "m1": chg(21),
+        "y1": years(1), "y2": years(2), "y5": years(5),
         "fromHigh": round(pct(last, high), 2),
         "vsDma": round(pct(last, dma), 2) if dma else None,
         "crossed": crossed, "isYield": is_yield,
@@ -201,7 +209,7 @@ def main():
     raw = {}
     for n, s in MACRO.items():
         try:
-            pts = yahoo(s, "10y" if n in ("Gold", "Silver") else "2y")
+            pts = yahoo(s, "10y" if n in ("Gold", "Silver") else "5y")
             raw[n] = pts
             m = summarize(n, pts, n in YIELDS); m["symbol"] = s
             macro.append(m); alerts += macro_alerts(m)
