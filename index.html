@@ -15,6 +15,7 @@ nav a.on{background:var(--tx);color:var(--bg)}
 .top{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
 .tag{padding:2px 10px;border-radius:99px;font-size:12px;font-weight:600;border:1px solid currentColor}
 .up{color:var(--up)}.dn{color:var(--dn)}.wa{color:var(--wa)}.mu{color:var(--mut)}
+.desc{color:var(--mut);font-size:12px;margin-top:2px}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(90px,1fr));gap:8px;margin:10px 0}
 .m small{display:block;color:var(--mut);font-size:11px}.m b{font-size:16px}
 .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
@@ -46,6 +47,7 @@ function card(x){
  const col=cl(x.m1)==="up"?"var(--up)":cl(x.m1)==="dn"?"var(--dn)":"var(--mut)";
  const dma=x.vsDma==null?"—":x.vsDma>=0?"Above":"Below";
  return `<div class="card"><div class="top"><b>${x.name}</b><b>${x.last.toLocaleString(undefined,{maximumFractionDigits:y?2:2})}${y?"%":""}</b></div>
+ ${x.desc?`<div class="desc">${x.desc}</div>`:""}
  ${x.stale?'<div class="wa" style="font-size:12px">Stale: last price '+x.asOf+'</div>':""}
  ${spark(x.spark,col)}
  <div class="grid"><div class="m"><small>1 day</small><b class="${cl(x.d1)}">${f(x.d1,d,u)}</b></div>
