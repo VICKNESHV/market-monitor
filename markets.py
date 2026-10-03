@@ -20,6 +20,20 @@ MACRO = {
 YIELDS = {"US 10Y yield"}  # changes shown in points, not %
 BIG_MOVE = {"SEC0": 5}     # 1-day alert % (default 3)
 
+# Short description shown under each ETF name on the dashboard
+ETF_INFO = {
+    "4GLD": "Xetra-Gold ETC · physically backed gold",
+    "ANAU": "Nasdaq 100 UCITS ETF (Acc, USD) · AXA IM / BNP Paribas Easy",
+    "CSP5": "Amundi Core S&P 500 UCITS ETF (Acc, USD)",
+    "EXUS": "Xtrackers MSCI World ex USA UCITS ETF 1C · developed markets excl. US",
+    "FLXK": "Franklin FTSE Korea UCITS ETF · South Korea large/mid caps",
+    "NQSE": "iShares Nasdaq 100 UCITS ETF (EUR Hedged, Acc)",
+    "QDVE": "iShares S&P 500 Information Technology Sector UCITS ETF (Acc)",
+    "SEC0": "iShares MSCI Global Semiconductors UCITS ETF (Acc, USD)",
+    "SPYL": "SPDR S&P 500 UCITS ETF (Acc)",
+    "XMME": "Xtrackers MSCI Emerging Markets UCITS ETF 1C",
+}
+
 
 def get(url, timeout=30, tries=1):
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0"})
@@ -208,6 +222,7 @@ def main():
     for n, s in ETFS.items():
         try:
             m = summarize(n, yahoo(s)); m["symbol"] = s
+            m["desc"] = ETF_INFO.get(n, "")
             etfs.append(m); alerts += etf_alerts(m)
         except Exception as e:
             traceback.print_exc()
