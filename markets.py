@@ -143,11 +143,23 @@ def macro_alerts(m):
     return out
 
 
+def fed_nyfed():
+    """Fed target range from the New York Fed's EFFR feed (each row carries the target range)."""
+    start = (date.today() - timedelta(days=120)).isoformat()
+    url = f"https://markets.newyorkfed.org/api/rates/unsecured/effr/search.json?startDate={start}&endDate={date.today().isoformat()}"
+    rows = sorted(json.loads(get(url, timeout=60, tries=3))["refRates"], key=lambda r: r["effectiveDate"])
+    return [(r["effectiveDate"], float(r["targetRateTo"])) for r in rows], \
+           [(r["effectiveDate"], float(r["targetRateFrom"])) for r in rows]
+
+
 def fed():
-    up, lo = fred("DFEDTARU"), fred("DFEDTARL")
+    try:
+        up, lo = fed_nyfed()
+    except Exception:
+        up, lo = fred("DFEDTARU"), fred("DFEDTARL")
     cur = (up[-1][1], lo[-1][1])
     changed = None
-    for (d, v), (_, prev) in zip(reversed(up[-60:]), reversed(up[-61:-1])):
+    for (d, v), (_, prev) in zip(reversed(up), reversed(up[:-1])):
         if v != prev:
             changed = {"date": d, "from": prev, "to": v}
             break
