@@ -172,7 +172,8 @@ importFile=async file=>{
     const arr=findArr(j);
     if(!arr)throw new Error("no list of holdings found in the JSON");
     const out=arr.map(x=>({sym:String(x.tradingsymbol||x.symbol||"").replace(/-(BE|BZ|T0|X1|XT|Z|IL|SM)$/,"").trim(),
-      qty:(num(x.quantity??x.quantity_available??x.qty)||0)+(num(x.t1_quantity)||0),avg:num(x.average_price??x.avg),
+      qty:x.total_quantity!=null?num(x.total_quantity):(num(x.quantity??x.quantity_available??x.qty)||0)+(num(x.t1_quantity)||0),
+      avg:num(x.average_price??x.buy_average??x.avg),
       ltp:num(x.close_price)||num(x.previous_closing_price)||num(x.last_price??x.ltp)}))
       .filter(x=>x.sym&&x.qty>0&&x.avg!=null&&x.ltp!=null);
     if(!out.length)throw new Error("no usable rows. Keys seen: "+Object.keys(arr[0]).join(", "));
