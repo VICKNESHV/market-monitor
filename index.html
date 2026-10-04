@@ -100,7 +100,7 @@ const lsSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
 const inr=x=>x==null?"—":"₹"+Math.round(x).toLocaleString("en-IN");
 const num=v=>{const n=parseFloat(String(v??"").replace(/[,₹\s]/g,""));return isNaN(n)?null:n};
 const isGold=s=>/GOLD|SILV|^SGB/i.test(s);
-const isMF=s=>/DIRECT|GROWTH|FUND|MF|PLAN/i.test(s);
+const isMF=s=>/DIRECT|GROWTH|FUND|MF|PLAN|INDEX FUND/i.test(s);
 const sum=a=>a.reduce((s,x)=>s+x,0);
 const owners=()=>[...new Set(H.map(h=>h.owner))];
 const normSym=s=>String(s??"").trim().toUpperCase().replace(/-(BE|BZ|T0|X1|XT|Z|IL|SM)$/,"" );
@@ -134,50 +134,64 @@ function parseHoldings(rows){
  if(!out.length)throw new Error("no holdings rows found");
  return out;
 }
-function parseJsonHoldings(data){
- let holdings=[];
- if(Array.isArray(data)) holdings=data;
- else if(data && typeof data === "object") {
-  const candidates=[
-   data?.status === "success" ? data?.data?.result?.eq : null,
-   data?.result?.eq,
-   data?.data?.result?.holdings,
-   data?.result?.holdings,
-   data?.eq,
-   data?.holdings,
-   data?.data?.eq,
-   data?.data?.holdings,
-   data?.payload?.eq,
-   data?.payload?.holdings
-  ];
-  for(const candidate of candidates){ if(Array.isArray(candidate)){ holdings=candidate; break; } }
+function normalizeNumber(v){
+ if(v==null||v==="")return null;
+ if(typeof v==="number")return Number.isFinite(v)?v:null;
+ if(typeof v==="string"){
+  const cleaned=v.replace(/[^0-9.\-]/g,"");
+  if(!cleaned||cleaned==="-"||cleaned===".")return null;
+  const n=Number(cleaned);
+  return Number.isFinite(n)?n:null;
  }
- if(!Array.isArray(holdings)||!holdings.length) throw new Error("JSON file does not contain a holdings array");
+ return null;
+}
+function normalizeSymbol(v){
+ return String(v ?? "").trim().replace(/\s+/g," ").toUpperCase().replace(/-(BE|BZ|T0|X1|XT|Z|IL|SM)$/i,"");
+}
+function parseJsonHoldings(data){
+ const rows=[];
+ function walk(node){
+  if(!node||typeof node!=="object")return;
+  if(Array.isArray(node)){
+   for(const item of node)walk(item);
+   return;
+  }
+  if(Array.isArray(node.eq))for(const item of node.eq)rows.push({...item,__type:"eq"});
+  if(Array.isArray(node.mf))for(const item of node.mf)rows.push({...item,__type:"mf"});
+  if(Array.isArray(node.holdings))for(const item of node.holdings)rows.push({...item,__type:"eq"});
+  for(const key of ["eq","mf","holdings","data","result","payload"]) {
+   if(node[key]&&typeof node[key]==="object")walk(node[key]);
+  }
+ }
+ walk(data);
+ if(!rows.length)throw new Error("JSON file does not contain a holdings array");
  const out=[];
- 
- for(const row of holdings){
-  const sym = row.tradingsymbol || row.symbol || row.instrument || row.stock || row.company || row.scrip || row.name;
-  const qty = num(row.quantity_available ?? row.quantity ?? row.total_quantity ?? row.qty ?? row.quantity_long_term ?? row.quantity_t1);
-  const avg = num(row.buy_average ?? row.average_price ?? row.avgprice ?? row.averagecost ?? row.avg ?? row.avg_price ?? row.buyAvg);
-  const price = num(row.ltp ?? row.close_price ?? row.current_price ?? row.price ?? row.last_price ?? row.closing_price ?? row.ltps);
-  
-  if(!sym||qty==null||avg==null||price==null||qty<=0) continue;
-  
+ for(const row of rows){
+  const type=row.__type || (row.isin_breakdown && typeof row.isin_breakdown === "object" ? "mf" : "eq");
+  const sym=normalizeSymbol(row.tradingsymbol || row.symbol || row.instrument || row.stock || row.company || row.scrip || row.name || row.fundName || row.mfName);
+  const qty=normalizeNumber(row.quantity_available ?? row.quantity ?? row.total_quantity ?? row.qty ?? row.quantity_long_term ?? row.quantity_t1 ?? row.units ?? row.qtyAvailable ?? row.quantityAvailable);
+  const avg=normalizeNumber(row.buy_average ?? row.average_price ?? row.avgprice ?? row.averagecost ?? row.avg ?? row.avg_price ?? row.buyAvg ?? row.purchasePrice);
+  const ltp=normalizeNumber(row.ltp ?? row.close_price ?? row.current_price ?? row.price ?? row.last_price ?? row.closing_price ?? row.closingPrice ?? row.nav ?? row.netAssetValue ?? row.currentValue);
+  if(!sym||qty==null||avg==null||ltp==null||qty<=0)continue;
   out.push({
-    sym:normSym(sym),
-    qty:Number(qty),
-    avg:Number(avg),
-    ltp:Number(price),
-    sector:row.sector || "",
-    cap:row.cap || "",
-    weight:row.weight==null?null:Number(row.weight),
-    unrealizedProfit:row.unrealized_profit==null?null:Number(row.unrealized_profit),
-    isMutualFund:row.isin_breakdown && typeof row.isin_breakdown === "object" ? true : false,
-    mfHoldings:row.isin_breakdown || {},
-    instrumentType:row.instrument_type || ""
+   sym,
+   qty:Number(qty),
+   avg:Number(avg),
+   ltp:Number(ltp),
+   type,
+   isMutualFund:type==="mf",
+   sector:row.sector || "",
+   cap:row.cap || "",
+   weight:normalizeNumber(row.weight),
+   unrealizedProfit:normalizeNumber(row.unrealized_profit),
+   closingValue:normalizeNumber(row.closing_value),
+   instrumentType:row.instrument_type || "",
+   isin:row.isin || "",
+   holdingsDate:row.holdings_date || "",
+   mfHoldings:row.isin_breakdown && typeof row.isin_breakdown === "object" ? row.isin_breakdown : {}
   });
  }
- if(!out.length) throw new Error("No valid holdings found in the JSON file");
+ if(!out.length)throw new Error("No valid holdings found in the JSON file");
  return out;
 }
 function save(owner,list){
@@ -274,10 +288,10 @@ function holdings(){
  <div style="margin-top:6px">${who!=="All"?`<button id="hrm">Remove ${who}</button>`:""}<button id="hclear">Clear everything</button></div></div>`;
  const by={};
  for(const x of H.filter(x=>who==="All"||x.owner===who)){
-  const r=by[x.sym]||(by[x.sym]={sym:x.sym,qty:0,inv:0,ltp:x.ltp,isMF:x.isMutualFund,mfName:x.isMutualFund?x.sym:null});
-  r.qty+=x.qty;r.inv+=x.qty*x.avg;r.ltp=x.ltp;
+  const r=by[x.sym]||(by[x.sym]={sym:x.sym,qty:0,inv:0,val:0,ltp:x.ltp,isMF:x.isMutualFund,mfName:x.isMutualFund?x.sym:null});
+  r.qty+=x.qty;r.inv+=x.qty*x.avg;r.val+=x.qty*x.ltp;r.ltp=x.ltp;
  }
- const rows=Object.values(by).map(r=>({...r,val:r.qty*r.ltp,m:A[r.sym]||null})).sort((a,b)=>b.val-a.val);
+ const rows=Object.values(by).map(r=>({...r,m:A[r.sym]||null})).sort((a,b)=>b.val-a.val);
  const tv=sum(rows.map(r=>r.val)),ti=sum(rows.map(r=>r.inv)),pl=tv-ti;
  const gold=rows.filter(r=>isGold(r.sym)),gv=sum(gold.map(r=>r.val)),ev=tv-gv;
  const mfs=rows.filter(r=>r.isMF),mfv=sum(mfs.map(r=>r.val));
