@@ -174,13 +174,14 @@ function importPaste(){
 }
 function metrics(r){
  if(!r||r.last==null)return{basis:"",price1y:null,dma:null,pe:null,epsG:null,peChg:null,label:"No data"};
- const q=(r.q||[]).map(x=>x[1]),a=(r.a||[]).map(x=>x[1]);
+ const qd=(r.q||[]),q=qd.map(x=>x[1]),a=(r.a||[]).map(x=>x[1]);
+ const contig=qd.length>=8&&qd.slice(-8).every((x,i,z)=>i===0||(new Date(x[0])-new Date(z[i-1][0]))/864e5<110);
  let now=null,ago=null,basis="";
- if(q.length>=8){now=sum(q.slice(-4));ago=sum(q.slice(-8,-4));basis="TTM"}
+ if(contig){now=sum(q.slice(-4));ago=sum(q.slice(-8,-4));basis="TTM"}
  else if(a.length>=2){now=a[a.length-1];ago=a[a.length-2];basis="FY"}
  const m={basis,price1y:r.ago?(r.last/r.ago-1)*100:null,dma:r.dma?(r.last/r.dma-1)*100:null,last:r.last};
  m.loss=now!=null&&now<=0;
- m.pe=now>0?r.last/now:null;
+ m.pe=now>0?r.last/now:null;m.eps=now;m.bad=m.pe!=null&&m.pe>150;
  m.epsG=now!=null&&ago>0?(now/ago-1)*100:null;
  m.peAgo=ago>0&&r.ago?r.ago/ago:null;
  m.peChg=m.pe!=null&&m.peAgo!=null?(m.pe/m.peAgo-1)*100:null;
@@ -225,7 +226,7 @@ function holdings(){
  const rows=Object.values(by).map(r=>({...r,m:A[r.sym]||null})).sort((a,b)=>b.val-a.val);
  const tv=sum(rows.map(r=>r.val)),ti=sum(rows.map(r=>r.inv)),pl=tv-ti;
  const gold=rows.filter(r=>isGold(r.sym)),gv=sum(gold.map(r=>r.val)),ev=tv-gv;
- const got=rows.filter(r=>r.m&&!isGold(r.sym)),peRows=got.filter(r=>r.m.pe>0);
+ const got=rows.filter(r=>r.m&&!isGold(r.sym)),peRows=got.filter(r=>r.m.pe>0&&!r.m.bad);
  const cov=ev?sum(peRows.map(r=>r.val))/ev*100:0;
  const pPE=peRows.length?sum(peRows.map(r=>r.val))/sum(peRows.map(r=>r.val/r.m.pe)):null;
  const share=f=>ev?sum(got.filter(f).map(r=>r.val))/ev*100:0;
@@ -242,12 +243,12 @@ function holdings(){
  <div class="m"><small>Below 200-day</small><b>${share(r=>r.m.dma<0).toFixed(0)}%</b></div></div>
  <div class="leg">Equity figures cover the non-gold/silver part only. Equity PE = value-weighted (total value ÷ total earnings) over holdings with positive earnings. Analysis from ${A.at}. Missing data is shown as —, never estimated.</div>`;
  h+=`<button id="han">${Object.keys(A).length>1?"Refresh analysis":"Analyse PE and EPS growth"}</button></div>`;
- h+=`<div class="card"><div class="wrap"><table><tr><th>Stock</th><th>Weight</th><th>P&L</th><th>PE</th><th>EPS gr.</th><th>PE chg</th><th>Price 1Y</th><th>vs 200d</th><th>Label</th></tr>`+
+ h+=`<div class="card"><div class="wrap"><table><tr><th>Stock</th><th>Weight</th><th>P&L</th><th>EPS</th><th>PE</th><th>EPS gr.</th><th>PE chg</th><th>Price 1Y</th><th>vs 200d</th><th>Label</th></tr>`+
  rows.map(r=>{const m=r.m,c=!m?"mu":/Attractive|growth/.test(m.label)?"up":/risk|falling|Loss/.test(m.label)?"dn":"wa";
  return `<tr><td><b>${r.sym}</b></td><td>${(r.val/tv*100).toFixed(1)}%</td><td class="${cl(r.val-r.inv)}">${f((r.val/r.inv-1)*100)}</td>
- <td>${m&&m.pe!=null?m.pe.toFixed(1)+(m.pe>150?" ⚠":""):"—"}</td><td class="${cl(m&&m.epsG)}">${m?f(m.epsG)+(m.basis==="FY"?" FY":""):"—"}</td><td class="${cl(m&&m.peChg)}">${m?f(m.peChg):"—"}</td>
+ <td>${m&&m.eps!=null?m.eps.toFixed(2)+(m.basis==="FY"?" FY":""):"—"}</td><td>${m&&m.bad?"n/a ⚠":m&&m.pe!=null?m.pe.toFixed(1):"—"}</td><td class="${cl(m&&m.epsG)}">${m?f(m.epsG)+(m.basis==="FY"?" FY":""):"—"}</td><td class="${cl(m&&m.peChg)}">${m?f(m.peChg):"—"}</td>
  <td class="${cl(m&&m.price1y)}">${m?f(m.price1y):"—"}</td><td class="${cl(m&&m.dma)}">${m?f(m.dma):"—"}</td><td class="${isGold(r.sym)?"mu":c}">${isGold(r.sym)?"Gold / silver":m?m.label:"—"}</td></tr>`}).join("")+
- `</table></div><div class="leg">Quantity = "Quantity Available" from the file, price = previous close. Compare the totals with Zerodha. EPS growth and PE change use trailing 4 quarters vs the 4 before, or the latest vs previous financial year when quarterly history is short (marked FY; then PE change compares today with a year ago on each year's reported EPS). ⚠ = PE above 150, probably a data problem (for example EPS in another currency). Gold and silver holdings have no PE, so they are skipped.</div></div>`;
+ `</table></div><div class="leg">Quantity = "Quantity Available" from the file, price = previous close. Compare the totals with Zerodha. EPS growth and PE change use trailing 4 quarters vs the 4 before, or the latest vs previous financial year when quarterly history is short (marked FY; then PE change compares today with a year ago on each year's reported EPS). n/a ⚠ = PE above 150 is hidden as bad data (for example EPS in dollars) and left out of the portfolio PE. Quarterly EPS is used only when 8 consecutive quarters exist; otherwise annual EPS (FY). Gold and silver holdings have no PE, so they are skipped.</div></div>`;
  return h;
 }
 function bindHoldings(){
