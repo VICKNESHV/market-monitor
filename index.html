@@ -25,12 +25,17 @@ svg{width:100%;height:46px;display:block}
 .al:last-child{border:0}.new{font-size:11px;font-weight:700;color:var(--bg);background:var(--dn);padding:1px 6px;border-radius:99px}
 .leg{font-size:11px;color:var(--mut);margin-top:4px}
 .bar{display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--bd);margin-top:6px}.bar i{display:block;height:100%}
+.wrap{overflow-x:auto}table{border-collapse:collapse;width:100%;min-width:640px;font-size:13px}
+th,td{padding:6px;border-bottom:1px solid var(--bd);text-align:right;white-space:nowrap}th:first-child,td:first-child{text-align:left}th:last-child,td:last-child{text-align:left}
+input[type=text]{width:100%;padding:8px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font:inherit}
+button,label.btn{display:inline-block;padding:8px 14px;border-radius:8px;border:1px solid var(--bd);background:var(--card);color:var(--tx);cursor:pointer;font:inherit;font-weight:600;margin:6px 6px 0 0}
 </style></head><body>
 <h1>Market Monitor</h1><p class="s" id="upd"></p>
 <nav id="nav"></nav>
 <div id="v"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js" defer></script>
 <script>
-const TABS=["Home","ETFs","Macro","India"];
+const TABS=["Home","ETFs","Macro","India","Holdings"];
 const f=(x,d=1,u="%")=>x==null?"—":(x>0?"+":"")+x.toFixed(d)+u;
 const cl=x=>x==null?"mu":x>0?"up":x<0?"dn":"mu";
 let M={},I={};
@@ -89,10 +94,134 @@ function india(){
   <div class="bar"><i style="width:${a/s*100}%;background:${r.epsGrowth>=0?"var(--up)":"var(--dn)"}"></i><i style="width:${b/s*100}%;background:${r.peChange>=0?"var(--wa)":"var(--mut)"}"></i></div>
   <div class="leg">Left: EPS effect · Right: PE effect</div></div>`}).join("")+"</div>";
 }
+// ---------- Holdings tab: everything here stays in this browser ----------
+const ls={get:k=>{try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}}};
+const lsSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
+let H=ls.get("mm_holdings")||[],W=ls.get("mm_worker")||"",A=ls.get("mm_analysis")||{},hmsg="";
+const inr=x=>x==null?"—":"₹"+Math.round(x).toLocaleString("en-IN");
+const num=v=>{const n=parseFloat(String(v??"").replace(/,/g,""));return isNaN(n)?null:n};
+
+function csvRows(t){
+ const rows=[];let r=[],c="",q=false;
+ for(let i=0;i<t.length;i++){const ch=t[i];
+  if(q){if(ch==='"'){if(t[i+1]==='"'){c+='"';i++}else q=false}else c+=ch}
+  else if(ch==='"')q=true;
+  else if(ch===","){r.push(c);c=""}
+  else if(ch==="\n"||ch==="\r"){if(ch==="\r"&&t[i+1]==="\n")i++;r.push(c);rows.push(r);r=[];c=""}
+  else c+=ch}
+ if(c||r.length){r.push(c);rows.push(r)}
+ return rows;
+}
+function parseHoldings(rows){
+ const norm=s=>String(s??"").toLowerCase().replace(/[^a-z]/g,"");
+ const hi=rows.findIndex(r=>r.some(c=>["symbol","instrument"].includes(norm(c))));
+ if(hi<0)throw new Error("no Symbol or Instrument column found");
+ const h=rows[hi].map(norm),col=(...n)=>h.findIndex(x=>n.some(k=>x.startsWith(k)));
+ const cS=col("symbol","instrument"),cQ=col("quantityavailable","qty"),cA=col("averageprice","avgcost"),cL=col("previousclosingprice","ltp"),cSec=col("sector");
+ if(cQ<0||cA<0||cL<0)throw new Error("quantity, average price or closing price column not found");
+ const out=[];
+ for(const r of rows.slice(hi+1)){
+  const raw=String(r[cS]??"").trim(),qty=num(r[cQ]),avg=num(r[cA]),ltp=num(r[cL]);
+  if(!raw||qty==null||avg==null||ltp==null||qty<=0||/^total$/i.test(raw))continue;
+  out.push({sym:raw.replace(/-(BE|BZ|T0|X1|XT|Z|IL|SM)$/,""),qty,avg,ltp,sector:cSec>=0?String(r[cSec]||""):""});
+ }
+ if(!out.length)throw new Error("no holdings rows found");
+ return out;
+}
+async function importFile(file){
+ try{
+  let sheets;
+  if(/\.csv$/i.test(file.name))sheets=[csvRows(await file.text())];
+  else{
+   if(typeof XLSX==="undefined")throw new Error("Excel reader did not load. Save the file as CSV and import that");
+   const wb=XLSX.read(await file.arrayBuffer(),{type:"array"});
+   const names=[...wb.SheetNames].sort((a,b)=>(/equity|holding/i.test(b)?1:0)-(/equity|holding/i.test(a)?1:0));
+   sheets=names.map(n=>XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,defval:""}));
+  }
+  let res=null,err=null;
+  for(const s of sheets){try{res=parseHoldings(s);break}catch(e){err=e}}
+  if(!res)throw err;
+  H=res;A={};lsSet("mm_holdings",H);lsSet("mm_analysis",A);hmsg=`Imported ${H.length} holdings.`;
+ }catch(e){hmsg="Import failed: "+e.message}
+ show();
+}
+const sum=a=>a.reduce((s,x)=>s+x,0);
+function metrics(r){
+ if(!r||r.last==null)return{basis:"",price1y:null,dma:null,pe:null,epsG:null,peChg:null,label:"No data"};
+ const q=(r.q||[]).map(x=>x[1]),a=(r.a||[]).map(x=>x[1]);
+ let now=null,ago=null,basis="";
+ if(q.length>=8){now=sum(q.slice(-4));ago=sum(q.slice(-8,-4));basis="TTM"}
+ else if(a.length>=2){now=a[a.length-1];ago=a[a.length-2];basis="FY"}
+ const m={basis,price1y:r.ago?(r.last/r.ago-1)*100:null,dma:r.dma?(r.last/r.dma-1)*100:null,last:r.last};
+ m.loss=now!=null&&now<=0;
+ m.pe=now>0?r.last/now:null;
+ m.epsG=now!=null&&ago>0?(now/ago-1)*100:null;
+ m.peAgo=basis==="TTM"&&ago>0&&r.ago?r.ago/ago:null;
+ m.peChg=m.pe!=null&&m.peAgo!=null?(m.pe/m.peAgo-1)*100:null;
+ m.label=m.loss?"Loss-making":m.epsG==null?"No earnings data":m.epsG<0&&m.peChg>0?"High risk / Overvalued":m.epsG<0?"Earnings falling":m.epsG>=15?"High growth":"Fair / Stagnant";
+ return m;
+}
+async function analyse(){
+ if(!W){hmsg="Paste your Worker address first.";return show()}
+ const raw={};
+ for(let i=0;i<H.length;i+=15){
+  hmsg=`Analysing ${Math.min(i+15,H.length)} of ${H.length}…`;show();
+  try{
+   const r=await fetch(W+(W.includes("?")?"&":"?")+"s="+encodeURIComponent(H.slice(i,i+15).map(h=>h.sym).join(",")));
+   if(!r.ok)throw new Error("HTTP "+r.status);
+   Object.assign(raw,await r.json());
+  }catch(e){hmsg="Worker error: "+e.message;return show()}
+ }
+ A={at:new Date().toISOString().slice(0,16).replace("T"," ")};
+ for(const h of H)A[h.sym]=metrics(raw[h.sym]);
+ lsSet("mm_analysis",A);hmsg="Analysis done.";show();
+}
+function holdings(){
+ let h=`<div class="card"><b>Import from Zerodha</b>
+ <p class="s">In Zerodha Console: Portfolio → Holdings → download. Pick the file here. It is read on this device and saved only in this browser, never uploaded.</p>
+ <label class="btn">Choose file<input type="file" id="hf" accept=".xlsx,.xls,.csv" hidden></label><button id="hclear">Clear data</button>
+ <div class="mu" style="font-size:13px;margin-top:8px">${hmsg}</div></div>`;
+ h+=`<div class="card"><b>Worker address</b><p class="s">Needed for PE and EPS growth. Your Cloudflare Worker's web address.</p>
+ <input type="text" id="hw" placeholder="https://something.workers.dev" value="${W}"><button id="hws">Save</button></div>`;
+ if(!H.length)return h;
+ const rows=H.map(x=>({...x,val:x.qty*x.ltp,inv:x.qty*x.avg,m:A[x.sym]||null})).sort((a,b)=>b.val-a.val);
+ const tv=sum(rows.map(r=>r.val)),ti=sum(rows.map(r=>r.inv)),pl=tv-ti;
+ const got=rows.filter(r=>r.m),peRows=got.filter(r=>r.m.pe>0);
+ const cov=tv?sum(peRows.map(r=>r.val))/tv*100:0;
+ const pPE=peRows.length?sum(peRows.map(r=>r.val))/sum(peRows.map(r=>r.val/r.m.pe)):null;
+ const share=f=>tv?sum(got.filter(f).map(r=>r.val))/tv*100:0;
+ const top5=tv?sum(rows.slice(0,5).map(r=>r.val))/tv*100:0;
+ h+=`<div class="card"><b>Portfolio</b><div class="grid">
+ <div class="m"><small>Invested</small><b>${inr(ti)}</b></div><div class="m"><small>Value</small><b>${inr(tv)}</b></div>
+ <div class="m"><small>P&L</small><b class="${cl(pl)}">${inr(pl)} (${f(ti?pl/ti*100:null)})</b></div>
+ <div class="m"><small>Holdings</small><b>${rows.length}</b></div><div class="m"><small>Top 5 weight</small><b>${top5.toFixed(0)}%</b></div></div>`;
+ if(got.length)h+=`<div class="grid"><div class="m"><small>Portfolio PE</small><b>${pPE==null?"—":pPE.toFixed(1)}</b></div>
+ <div class="m"><small>PE coverage</small><b>${cov.toFixed(0)}%</b></div>
+ <div class="m"><small>High growth</small><b class="up">${share(r=>r.m.label==="High growth").toFixed(0)}%</b></div>
+ <div class="m"><small>Earnings falling</small><b class="dn">${share(r=>/falling|risk/.test(r.m.label)).toFixed(0)}%</b></div>
+ <div class="m"><small>Below 200-day</small><b>${share(r=>r.m.dma<0).toFixed(0)}%</b></div></div>
+ <div class="leg">Portfolio PE = value-weighted (total value ÷ total earnings) over holdings with positive earnings. Analysis from ${A.at}. Missing data is shown as —, never estimated.</div>`;
+ h+=`<button id="han">${got.length?"Refresh analysis":"Analyse PE and EPS growth"}</button></div>`;
+ h+=`<div class="card"><div class="wrap"><table><tr><th>Stock</th><th>Weight</th><th>P&L</th><th>PE</th><th>EPS gr.</th><th>PE chg</th><th>Price 1Y</th><th>vs 200d</th><th>Label</th></tr>`+
+ rows.map(r=>{const m=r.m,c=!m?"mu":/Attractive|growth/.test(m.label)?"up":/risk|falling|Loss/.test(m.label)?"dn":"wa";
+  return `<tr><td><b>${r.sym}</b></td><td>${(r.val/tv*100).toFixed(1)}%</td><td class="${cl(r.val-r.inv)}">${f((r.val/r.inv-1)*100)}</td>
+  <td>${m&&m.pe!=null?m.pe.toFixed(1):"—"}</td><td class="${cl(m&&m.epsG)}">${m?f(m.epsG)+(m.basis==="FY"?" FY":""):"—"}</td><td class="${cl(m&&m.peChg)}">${m?f(m.peChg):"—"}</td>
+  <td class="${cl(m&&m.price1y)}">${m?f(m.price1y):"—"}</td><td class="${cl(m&&m.dma)}">${m?f(m.dma):"—"}</td><td class="${c}">${m?m.label:"—"}</td></tr>`}).join("")+
+ `</table></div><div class="leg">Quantity = "Quantity Available" from your file, price = previous close. Compare the total with Zerodha. EPS growth = trailing 4 quarters vs the 4 before (or latest vs previous financial year, marked FY). Labels here have no 5-year PE percentile, so there is no "cheap" label.</div></div>`;
+ return h;
+}
+function bindHoldings(){
+ const $=id=>document.getElementById(id);
+ $("hf").onchange=e=>e.target.files[0]&&importFile(e.target.files[0]);
+ $("hclear").onclick=()=>{H=[];A={};lsSet("mm_holdings",H);lsSet("mm_analysis",A);hmsg="Cleared.";show()};
+ $("hws").onclick=()=>{W=$("hw").value.trim().replace(/\/+$/,"");lsSet("mm_worker",W);hmsg="Saved.";show()};
+ if($("han"))$("han").onclick=analyse;
+}
 function show(){
  const t=(location.hash.slice(1)||"home").toLowerCase();
  document.getElementById("nav").innerHTML=TABS.map(n=>`<a href="#${n.toLowerCase()}" class="${n.toLowerCase()===t?"on":""}">${n}</a>`).join("");
- document.getElementById("v").innerHTML={home,etfs,macro,india}[t]?.()||home();
+ document.getElementById("v").innerHTML={home,etfs,macro,india,holdings}[t]?.()||home();
+ if(t==="holdings")bindHoldings();
 }
 Promise.all([get("markets.json"),get("data.json")]).then(([m,i])=>{
  M=m||{errors:["markets.json not found yet. Run the Update markets workflow."]};I=i||{};
