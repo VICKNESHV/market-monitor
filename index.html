@@ -25,10 +25,11 @@ svg{width:100%;height:46px;display:block}
 .al:last-child{border:0}.new{font-size:11px;font-weight:700;color:var(--bg);background:var(--dn);padding:1px 6px;border-radius:99px}
 .leg{font-size:11px;color:var(--mut);margin-top:4px}
 .bar{display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--bd);margin-top:6px}.bar i{display:block;height:100%}
-.wrap{overflow-x:auto}table{border-collapse:collapse;width:100%;min-width:640px;font-size:13px}
+.wrap{overflow-x:auto}table{border-collapse:collapse;width:100%;min-width:960px;font-size:13px}
 th,td{padding:6px;border-bottom:1px solid var(--bd);text-align:right;white-space:nowrap}th:first-child,td:first-child{text-align:left}th:last-child,td:last-child{text-align:left}
 input[type=text]{width:100%;padding:8px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font:inherit}
 button,label.btn{display:inline-block;padding:8px 14px;border-radius:8px;border:1px solid var(--bd);background:var(--card);color:var(--tx);cursor:pointer;font:inherit;font-weight:600;margin:6px 6px 0 0}
+textarea{width:100%;padding:8px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font:inherit;resize:vertical}
 </style></head><body>
 <h1>Market Monitor</h1><p class="s" id="upd"></p>
 <nav id="nav"></nav>
@@ -38,9 +39,8 @@ button,label.btn{display:inline-block;padding:8px 14px;border-radius:8px;border:
 const TABS=["Home","ETFs","Macro","India","Holdings"];
 const f=(x,d=1,u="%")=>x==null?"—":(x>0?"+":"")+x.toFixed(d)+u;
 const cl=x=>x==null?"mu":x>0?"up":x<0?"dn":"mu";
-let M={},I={};
+let M={},I={},H=[],W="",A={},hmsg="",who="All";
 const get=u=>fetch(u+"?"+Date.now()).then(r=>r.json()).catch(()=>null);
-
 function spark(a,color){
  if(!a||a.length<2)return"";
  const lo=Math.min(...a),hi=Math.max(...a),r=(hi-lo)||1;
@@ -77,7 +77,7 @@ function macro(){
  let h="";
  if(M.fed)h+=`<div class="card"><b>Fed target rate</b><div class="grid"><div class="m"><small>Range</small><b>${M.fed.lower}–${M.fed.upper}%</b></div>
  <div class="m"><small>Last change</small><b>${M.fed.lastChange?M.fed.lastChange.date+" ("+M.fed.lastChange.from+"→"+M.fed.lastChange.to+")":"none in 60 days"}</b></div></div></div>`;
- if(M.ratio)h+=`<div class="card"><div class="top"><b>Gold / silver ratio</b><b>${M.ratio.ratio}</b></div>${spark(M.ratio.spark,"var(--wa)")}<div class="leg">10-year percentile: ${M.ratio.pct} (high = silver cheap vs gold)</div></div>`;
+ if(M.ratio)h+=`<div class="card"><div class="top"><b>Gold / silver ratio</b><b>${M.ratio.ratio}</b></div>${spark(M.ratio.spark,"var(--wa)")}<div class="leg">10-year percentile: ${M.ratio.pct} (high = ...)</div></div>`;
  return h+`<div class="cards">${(M.macro||[]).map(card).join("")}</div>`;
 }
 function india(){
@@ -94,21 +94,21 @@ function india(){
   <div class="bar"><i style="width:${a/s*100}%;background:${r.epsGrowth>=0?"var(--up)":"var(--dn)"}"></i><i style="width:${b/s*100}%;background:${r.peChange>=0?"var(--wa)":"var(--mut)"}"></i></div>
   <div class="leg">Left: EPS effect · Right: PE effect</div></div>`}).join("")+"</div>";
 }
-// ---------- Holdings tab: everything here stays in this browser ----------
+
 const ls={get:k=>{try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}}};
 const lsSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
-let H=ls.get("mm_holdings2")||[],W=ls.get("mm_worker")||"https://stock-lookup.vicknesh-moorthi.workers.dev",pending=null,A=ls.get("mm_analysis")||{},hmsg="",who="All";
 const inr=x=>x==null?"—":"₹"+Math.round(x).toLocaleString("en-IN");
 const num=v=>{const n=parseFloat(String(v??"").replace(/[,₹\s]/g,""));return isNaN(n)?null:n};
 const isGold=s=>/GOLD|SILV|^SGB/i.test(s);
 const sum=a=>a.reduce((s,x)=>s+x,0);
 const owners=()=>[...new Set(H.map(h=>h.owner))];
+const normSym=s=>String(s??"").trim().toUpperCase().replace(/-(BE|BZ|T0|X1|XT|Z|IL|SM)$/,"" );
 
 function csvRows(t){
  const rows=[];let r=[],c="",q=false;
  for(let i=0;i<t.length;i++){const ch=t[i];
-  if(q){if(ch==='"'){if(t[i+1]==='"'){c+='"';i++}else q=false}else c+=ch}
-  else if(ch==='"')q=true;
+  if(q){if(ch=='"'){if(t[i+1]=='"'){c+='"';i++}else q=false}else c+=ch}
+  else if(ch=='"')q=true;
   else if(ch===","){r.push(c);c=""}
   else if(ch==="\n"||ch==="\r"){if(ch==="\r"&&t[i+1]==="\n")i++;r.push(c);rows.push(r);r=[];c=""}
   else c+=ch}
@@ -122,15 +122,59 @@ function parseHoldings(rows){
  const h=rows[hi].map(norm);
  const col=(...n)=>{for(const k of n){const i=h.findIndex(x=>x.startsWith(k));if(i>=0)return i}return -1};
  const cS=col("symbol","instrument","stock","company","scrip","name"),cQ=col("quantityavailable","qty","quantity"),
-  cA=col("averageprice","buyavg","avgcost","avgprice","averagecost","avg"),cL=col("previousclosingprice","ltp","closeprice","prevclose","closing","currentprice","price");
+ cA=col("averageprice","buyavg","avgcost","avgprice","averagecost","avg"),cL=col("previousclosingprice","ltp","closeprice","prevclose","closing","currentprice","price");
  if(cQ<0||cA<0||cL<0)throw new Error("quantity, average price or closing price column not found (headers seen: "+rows[hi].join(" | ")+")");
  const out=[];
  for(const r of rows.slice(hi+1)){
   const raw=String(r[cS]??"").trim(),qty=num(r[cQ]),avg=num(r[cA]),ltp=num(r[cL]);
   if(!raw||qty==null||avg==null||ltp==null||qty<=0||/^total$/i.test(raw))continue;
-  out.push({sym:raw.replace(/-(BE|BZ|T0|X1|XT|Z|IL|SM)$/,""),qty,avg,ltp});
+  out.push({sym:normSym(raw),qty,avg,ltp});
  }
  if(!out.length)throw new Error("no holdings rows found");
+ return out;
+}
+function parseJsonHoldings(data){
+ let raw=[];
+ if(Array.isArray(data)) raw=data;
+ else if(data && typeof data === "object") {
+  const candidates=[
+   data?.status === "success" ? data?.data?.result?.eq : null,
+   data?.result?.eq,
+   data?.data?.result?.holdings,
+   data?.result?.holdings,
+   data?.eq,
+   data?.holdings,
+   data?.data?.eq,
+   data?.data?.holdings,
+   data?.payload?.eq,
+   data?.payload?.holdings
+  ];
+  for(const candidate of candidates){ if(Array.isArray(candidate)){ raw=candidate; break; } }
+ }
+ if(!Array.isArray(raw)||!raw.length) throw new Error("JSON file does not contain a holdings array");
+ const out=[];
+ for(const row of raw){
+  const sym = row.tradingsymbol || row.symbol || row.instrument || row.stock || row.company || row.scrip || row.name;
+  const qty = num(row.quantity_available ?? row.quantity ?? row.total_quantity ?? row.qty ?? row.quantity_long_term ?? row.quantity_t1);
+  const avg = num(row.buy_average ?? row.average_price ?? row.avgprice ?? row.averagecost ?? row.avg ?? row.avg_price ?? row.buyAvg);
+  const ltp = num(row.ltp ?? row.close_price ?? row.current_price ?? row.price ?? row.last_price ?? row.closing_price ?? row.ltps);
+  if(!sym||qty==null||avg==null||ltp==null||qty<=0) continue;
+  out.push({
+    sym:normSym(sym),
+    qty:Number(qty),
+    avg:Number(avg),
+    ltp:Number(ltp),
+    sector:row.sector || "",
+    cap:row.cap || "",
+    weight:row.weight==null?null:Number(row.weight),
+    unrealizedProfit:row.unrealized_profit==null?null:Number(row.unrealized_profit),
+    closingValue:row.closing_value==null?null:Number(row.closing_value),
+    isin:row.isin || "",
+    instrumentType:row.instrument_type || "",
+    holdingsDate:row.holdings_date || ""
+  });
+ }
+ if(!out.length) throw new Error("No valid holdings found in the JSON file");
  return out;
 }
 function save(owner,list){
@@ -142,66 +186,53 @@ const ownerName=()=>(document.getElementById("hown").value.trim()||"Me");
 async function importFile(file){
  const owner=ownerName();
  try{
-  let sheets,sheetsText="";
+  let sheets=[];
+  if(/\.json$/i.test(file.name)){
+   const parsed=parseJsonHoldings(JSON.parse(await file.text()));
+   save(owner,parsed);
+   show();
+   return;
+  }
   if(/\.csv$/i.test(file.name))sheets=[csvRows(await file.text())];
   else{
-   if(typeof XLSX==="undefined")throw new Error("Excel reader did not load. Save the file as CSV and import that");
+   if(typeof XLSX==="undefined")throw new Error("Excel reader did not load. Save the file as CSV or JSON and import that");
    const wb=XLSX.read(await file.arrayBuffer(),{type:"array"});
    const names=[...wb.SheetNames].sort((a,b)=>(/equity|holding/i.test(b)?1:0)-(/equity|holding/i.test(a)?1:0));
    sheets=names.map(n=>XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,defval:""}));
-   sheetsText=XLSX.utils.sheet_to_csv(wb.Sheets[names[0]]);
   }
   let res=null,err=null;
   for(const s of sheets){try{res=parseHoldings(s);break}catch(e){err=e}}
-  if(!res){const txt=/\.csv$/i.test(file.name)?await file.text():sheetsText;return askAI(owner,txt,"Standard import failed ("+err.message+").")}
+  if(!res)throw err;
   save(owner,res);
  }catch(e){hmsg="Import failed: "+e.message}
  show();
 }
-// Zerodha's web table copies each row over three lines: symbol, a lone quantity, then tab-separated numbers
 function fixPaste(t){
- const lines=t.split(/\r?\n/).map(l=>l.replace(/\s+$/,"")).filter(l=>l.trim()),rows=[];let sym=null;
- const isNum=s=>/^[\d,.\-+%₹\s]+$/.test(s);
+ const lines=t.split(/\r?\n/).map(l=>l.replace(/\s+$/,"")) .filter(l=>l.trim()),rows=[];let sym=null;
+ const isNum=s=>/^[\d,\.\-+%₹\s]+$/.test(s);
  rows.push(lines[0].split("\t").map(s=>s.trim()));
  for(const l of lines.slice(1)){
   if(l.includes("\t")){const f=l.split("\t").map(s=>s.trim());if(sym!=null){rows.push([sym,...f]);sym=null}else if(!isNum(f[0]))rows.push(f)}
-  else if(!isNum(l.trim()))sym=l.trim();
+  else if(sym==null&&!isNum(l.trim()))sym=l.trim().split(/\s+/)[0];
  }
  return rows;
-}
-async function smartParse(text){
- if(!W)throw new Error("add the Worker address first");
- const lines=text.split(/\r?\n/).filter(l=>l.trim()),head=lines[0],out=[];
- for(let i=0;i<lines.length;i+=90){
-  const r=await fetch(W,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({text:(i?head+"\n":"")+lines.slice(i,i+90).join("\n")})});
-  if(!r.ok)throw new Error("Worker HTTP "+r.status);
-  const j=await r.json();if(j.error)throw new Error(j.error);
-  out.push(...j.rows);
- }
- const rows=out.map(x=>({sym:String(x.symbol||"").trim().toUpperCase().replace(/-(BE|BZ|T0|X1|XT|Z|IL|SM)$/,""),qty:num(x.qty),avg:num(x.avg),ltp:num(x.ltp)})).filter(x=>x.sym&&x.qty>0&&x.avg>0&&x.ltp>0);
- if(!rows.length)throw new Error("the AI found no holdings");
- return rows;
-}
-async function askAI(owner,text,why){
- hmsg=why+" Asking the AI to read it…";show();
- try{pending={owner,rows:await smartParse(text)};hmsg=""}catch(e){hmsg="Smart import failed: "+e.message}
- show();
 }
 function importPaste(){
  const owner=ownerName(),t=document.getElementById("hpaste").value;
  try{save(owner,parseHoldings(t.includes("\t")?fixPaste(t):csvRows(t)))}
- catch(e){return askAI(owner,t,"Standard import failed ("+e.message+").")}
+ catch(e){hmsg="Paste failed: "+e.message}
  show();
 }
 function metrics(r){
  if(!r||r.last==null)return{basis:"",price1y:null,dma:null,pe:null,epsG:null,peChg:null,label:"No data"};
- const q=(r.q||[]).map(x=>x[1]),a=(r.a||[]).map(x=>x[1]);
+ const qd=(r.q||[]),q=qd.map(x=>x[1]),a=(r.a||[]).map(x=>x[1]);
+ const contig=qd.length>=8&&qd.slice(-8).every((x,i,z)=>i===0||(new Date(x[0])-new Date(z[i-1][0]))/864e5<110);
  let now=null,ago=null,basis="";
- if(q.length>=8){now=sum(q.slice(-4));ago=sum(q.slice(-8,-4));basis="TTM"}
+ if(contig){now=sum(q.slice(-4));ago=sum(q.slice(-8,-4));basis="TTM"}
  else if(a.length>=2){now=a[a.length-1];ago=a[a.length-2];basis="FY"}
- const m={basis,price1y:r.ago?(r.last/r.ago-1)*100:null,dma:r.dma?(r.last/r.dma-1)*100:null,last:r.last};
+ const m={basis,price1y:r.ago?(r.last/r.ago-1)*100:null,dma:r.dma?(r.last/r.dma-1)*100:null,last:r.last,conv:!!r.conv};
  m.loss=now!=null&&now<=0;
- m.pe=now>0?r.last/now:null;
+ m.pe=now>0?r.last/now:null;m.eps=now;m.bad=m.pe!=null&&m.pe>150;
  m.epsG=now!=null&&ago>0?(now/ago-1)*100:null;
  m.peAgo=ago>0&&r.ago?r.ago/ago:null;
  m.peChg=m.pe!=null&&m.peAgo!=null?(m.pe/m.peAgo-1)*100:null;
@@ -225,35 +256,28 @@ async function analyse(){
 }
 function holdings(){
  let h=`<div class="card"><b>Import holdings</b>
- <p class="s">Zerodha Console: Portfolio → Holdings → download. Type whose holdings these are, then pick the file, or paste the table. Read on this device and saved only in this browser, never uploaded. Importing again for the same name replaces that person's holdings.</p>
+ <p class="s">Zerodha Console: Portfolio → Holdings → download. You can also import a JSON export from a broker or a saved holdings file.</p>
  <input type="text" id="hown" placeholder="Owner name (e.g. Me, Wife, Father)" value="${who!=="All"?who:""}">
- <label class="btn">Choose file<input type="file" id="hf" accept=".xlsx,.xls,.csv" hidden></label>
- <p class="s" style="margin-top:12px">Or select the holdings table on the Zerodha page, copy it, and paste here:</p>
- <textarea id="hpaste" rows="3" style="width:100%;padding:8px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font:inherit"></textarea>
+ <label class="btn">Choose file<input type="file" id="hf" accept=".xlsx,.xls,.csv,.json" hidden></label>
+ <p class="s" style="margin-top:12px">Or paste a holdings table here:</p>
+ <textarea id="hpaste" rows="3" placeholder="Paste CSV / Zerodha table here"></textarea>
  <button id="hpb">Import pasted table</button>
  <div class="mu" style="font-size:13px;margin-top:8px">${hmsg}</div></div>`;
- h+=`<div class="card"><b>Worker address</b><p class="s">Already filled in. Only change it if you run your own Worker.</p>
+ h+=`<div class="card"><b>Worker address</b><p class="s">Needed for PE and EPS growth. Your Cloudflare Worker's web address.</p>
  <input type="text" id="hw" placeholder="https://something.workers.dev" value="${W}"><button id="hws">Save</button></div>`;
- if(pending){
-  const pv=sum(pending.rows.map(r=>r.qty*r.ltp)),pi=sum(pending.rows.map(r=>r.qty*r.avg));
-  h+=`<div class="card"><b>Check before saving: ${pending.owner}</b><p class="s">Read by an AI, so it can make mistakes. Compare the totals with Zerodha.</p>
-  <div class="grid"><div class="m"><small>Holdings</small><b>${pending.rows.length}</b></div><div class="m"><small>Invested</small><b>${inr(pi)}</b></div><div class="m"><small>Value</small><b>${inr(pv)}</b></div></div>
-  <div class="wrap"><table><tr><th>Stock</th><th>Qty</th><th>Avg</th><th>Price</th></tr>${pending.rows.map(r=>`<tr><td>${r.sym}</td><td>${r.qty}</td><td>${r.avg}</td><td>${r.ltp}</td></tr>`).join("")}</table></div>
-  <button id="hsave">Looks right, save</button><button id="hcancel">Cancel</button></div>`;
- }
  if(!H.length)return h;
  const os=owners();
  h+=`<div class="card"><b>Whose holdings</b><div>${["All",...os].map(o=>`<button class="hwho" data-o="${o}" style="${o===who?"background:var(--tx);color:var(--bg)":""}">${o}</button>`).join("")}</div>
  <div style="margin-top:6px">${who!=="All"?`<button id="hrm">Remove ${who}</button>`:""}<button id="hclear">Clear everything</button></div></div>`;
  const by={};
  for(const x of H.filter(x=>who==="All"||x.owner===who)){
-  const r=by[x.sym]||(by[x.sym]={sym:x.sym,qty:0,inv:0,ltp:x.ltp});
-  r.qty+=x.qty;r.inv+=x.qty*x.avg;r.ltp=x.ltp;
+  const r=by[x.sym]||(by[x.sym]={sym:x.sym,qty:0,inv:0,val:0,ltp:x.ltp});
+  r.qty+=x.qty;r.inv+=x.qty*x.avg;r.val+=x.qty*x.ltp;r.ltp=x.ltp;
  }
- const rows=Object.values(by).map(r=>({...r,val:r.qty*r.ltp,m:A[r.sym]||null})).sort((a,b)=>b.val-a.val);
+ const rows=Object.values(by).map(r=>({...r,m:A[r.sym]||null})).sort((a,b)=>b.val-a.val);
  const tv=sum(rows.map(r=>r.val)),ti=sum(rows.map(r=>r.inv)),pl=tv-ti;
  const gold=rows.filter(r=>isGold(r.sym)),gv=sum(gold.map(r=>r.val)),ev=tv-gv;
- const got=rows.filter(r=>r.m&&!isGold(r.sym)),peRows=got.filter(r=>r.m.pe>0);
+ const got=rows.filter(r=>r.m&&!isGold(r.sym)),peRows=got.filter(r=>r.m.pe>0&&!r.m.bad);
  const cov=ev?sum(peRows.map(r=>r.val))/ev*100:0;
  const pPE=peRows.length?sum(peRows.map(r=>r.val))/sum(peRows.map(r=>r.val/r.m.pe)):null;
  const share=f=>ev?sum(got.filter(f).map(r=>r.val))/ev*100:0;
@@ -268,26 +292,27 @@ function holdings(){
  <div class="m"><small>High growth</small><b class="up">${share(r=>r.m.label==="High growth").toFixed(0)}%</b></div>
  <div class="m"><small>Earnings falling</small><b class="dn">${share(r=>/falling|risk/.test(r.m.label)).toFixed(0)}%</b></div>
  <div class="m"><small>Below 200-day</small><b>${share(r=>r.m.dma<0).toFixed(0)}%</b></div></div>
- <div class="leg">Equity figures cover the non-gold/silver part only. Equity PE = value-weighted (total value ÷ total earnings) over holdings with positive earnings. Analysis from ${A.at}. Missing data is shown as —, never estimated.</div>`;
+ <div class="leg">Equity figures cover the non-gold/silver part only. Equity PE = value-weighted (total value ÷ total earnings) over holdings with positive earnings. Analysis from ${A.at}. Missing data is shown as “—”.</div>`;
  h+=`<button id="han">${Object.keys(A).length>1?"Refresh analysis":"Analyse PE and EPS growth"}</button></div>`;
- h+=`<div class="card"><div class="wrap"><table><tr><th>Stock</th><th>Weight</th><th>P&L</th><th>PE</th><th>EPS gr.</th><th>PE chg</th><th>Price 1Y</th><th>vs 200d</th><th>Label</th></tr>`+
+ h+=`<div class="card"><div class="wrap"><table><tr><th>Stock</th><th>Qty</th><th>Avg</th><th>LTP</th><th>Value</th><th>P&L</th><th>Weight</th><th>PE</th><th>EPS gr.</th><th>PE chg</th><th>Price 1Y</th><th>vs 200d</th><th>Label</th></tr>`+
  rows.map(r=>{const m=r.m,c=!m?"mu":/Attractive|growth/.test(m.label)?"up":/risk|falling|Loss/.test(m.label)?"dn":"wa";
-  return `<tr><td><b>${r.sym}</b></td><td>${(r.val/tv*100).toFixed(1)}%</td><td class="${cl(r.val-r.inv)}">${f((r.val/r.inv-1)*100)}</td>
-  <td>${m&&m.pe!=null?m.pe.toFixed(1)+(m.pe>150?" ⚠":""):"—"}</td><td class="${cl(m&&m.epsG)}">${m?f(m.epsG)+(m.basis==="FY"?" FY":""):"—"}</td><td class="${cl(m&&m.peChg)}">${m?f(m.peChg):"—"}</td>
-  <td class="${cl(m&&m.price1y)}">${m?f(m.price1y):"—"}</td><td class="${cl(m&&m.dma)}">${m?f(m.dma):"—"}</td><td class="${isGold(r.sym)?"mu":c}">${isGold(r.sym)?"Gold / silver":m?m.label:"—"}</td></tr>`}).join("")+
- `</table></div><div class="leg">Quantity = "Quantity Available" from the file, price = previous close. Compare the totals with Zerodha. EPS growth and PE change use trailing 4 quarters vs the 4 before, or the latest vs previous financial year when quarterly history is short (marked FY; then PE change compares today with a year ago on each year's reported EPS). ⚠ = PE above 150, probably a data problem (for example EPS in another currency). Gold and silver holdings have no PE, so they are skipped.</div></div>`;
+  const peCell=m&&m.pe!=null?(m.bad?"n/a ⚠":m.pe.toFixed(1)):"—";
+  const epsCell=m&&m.epsG!=null?f(m.epsG)+(m.basis==="FY"?" FY":""):"—";
+  const peChgCell=m&&m.peChg!=null?f(m.peChg):"—";
+  const p1yCell=m&&m.price1y!=null?f(m.price1y):"—";
+  const dmaCell=m&&m.dma!=null?f(m.dma):"—";
+  return `<tr><td><b>${r.sym}</b></td><td>${r.qty}</td><td>${inr(r.inv/r.qty)}</td><td>${inr(r.ltp)}</td><td>${inr(r.val)}</td><td class="${cl(r.val-r.inv)}">${inr(r.val-r.inv)}</td><td>${(r.val/tv*100).toFixed(1)}%</td><td>${peCell}</td><td class="${cl(m&&m.epsG)}">${epsCell}</td><td class="${cl(m&&m.peChg)}">${peChgCell}</td><td class="${cl(m&&m.price1y)}">${p1yCell}</td><td class="${cl(m&&m.dma)}">${dmaCell}</td><td class="${isGold(r.sym)?"mu":c}">${isGold(r.sym)?"Gold / silver":m?m.label:"—"}</td></tr>`;}).join("")+
+ `</table></div><div class="leg">Quantity = "Quantity Available" from the file. Price = current LTP. Compare totals with your broker. EPS growth and PE change use trailing 4 quarters vs the 4 before. Missing data is shown as “—”.</div>`;
  return h;
 }
 function bindHoldings(){
  const $=id=>document.getElementById(id);
  $("hf").onchange=e=>e.target.files[0]&&importFile(e.target.files[0]);
  $("hpb").onclick=importPaste;
- if($("hsave"))$("hsave").onclick=()=>{save(pending.owner,pending.rows);pending=null;show()};
- if($("hcancel"))$("hcancel").onclick=()=>{pending=null;hmsg="Cancelled.";show()};
- $("hws").onclick=()=>{W=$("hw").value.trim().replace(/\/+$/,"");lsSet("mm_worker",W);hmsg="Saved.";show()};
+ $("hws").onclick=()=>{W=$("hw").value.trim().replace(/\/+$/,"" );lsSet("mm_worker",W);hmsg="Saved.";show();};
  if($("han"))$("han").onclick=analyse;
- if($("hclear"))$("hclear").onclick=()=>{H=[];A={};who="All";lsSet("mm_holdings2",H);lsSet("mm_analysis",A);hmsg="Cleared.";show()};
- if($("hrm"))$("hrm").onclick=()=>{H=H.filter(h=>h.owner!==who);who="All";lsSet("mm_holdings2",H);hmsg="Removed.";show()};
+ if($("hclear"))$("hclear").onclick=()=>{H=[];A={};who="All";lsSet("mm_holdings2",H);lsSet("mm_analysis",A);hmsg="Cleared.";show();};
+ if($("hrm"))$("hrm").onclick=()=>{H=H.filter(h=>h.owner!==who);who="All";lsSet("mm_holdings2",H);hmsg="Removed.";show();};
  document.querySelectorAll(".hwho").forEach(b=>b.onclick=()=>{who=b.dataset.o;show()});
 }
 function show(){
@@ -296,6 +321,8 @@ function show(){
  document.getElementById("v").innerHTML={home,etfs,macro,india,holdings}[t]?.()||home();
  if(t==="holdings")bindHoldings();
 }
+const lsData={get:ls.get, set:lsSet};
+H=lsData.get("mm_holdings2")||[];W=lsData.get("mm_worker")||"";A=lsData.get("mm_analysis")||{};
 Promise.all([get("markets.json"),get("data.json")]).then(([m,i])=>{
  M=m||{errors:["markets.json not found yet. Run the Update markets workflow."]};I=i||{};
  document.getElementById("upd").textContent=M.updated?"Markets updated "+M.updated.replace("T"," ").replace("+00:00","")+" UTC":"";
