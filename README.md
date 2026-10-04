@@ -6,12 +6,13 @@ Live page: <https://vickneshv.github.io/market-monitor/>
 
 ## What it shows
 
-The page has four tabs:
+The page has five tabs:
 
 - **Home**: alerts that need attention, alerts cleared in the last 7 days, and a data health list showing any source that failed to load.
 - **ETFs**: one card per ETF with a short description, price, sparkline, 1 day / 1 week / 1 month / 1 / 2 / 5 year changes, distance from the 1-year high and position versus the 200-day average.
 - **Macro**: Fed target rate, gold/silver ratio, and cards for gold, silver, Brent oil, US dollar index, EUR/USD, USD/INR, US 10Y yield and Nasdaq 100.
 - **India**: one card per Nifty index with PE, PE a year ago, price change, PE change, implied EPS growth and a simple valuation label.
+- **Holdings**: import your Zerodha holdings (file or pasted table) to see invested amount, current value, P&L, top-5 weight, gold/silver share and, with an optional Worker, PE and EPS growth per stock. Everything is stored only in your own browser; nothing is uploaded or committed to the repo.
 
 ## How it works
 

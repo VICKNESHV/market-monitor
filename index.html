@@ -40,7 +40,6 @@ const f=(x,d=1,u="%")=>x==null?"—":(x>0?"+":"")+x.toFixed(d)+u;
 const cl=x=>x==null?"mu":x>0?"up":x<0?"dn":"mu";
 let M={},I={};
 const get=u=>fetch(u+"?"+Date.now()).then(r=>r.json()).catch(()=>null);
-
 function spark(a,color){
  if(!a||a.length<2)return"";
  const lo=Math.min(...a),hi=Math.max(...a),r=(hi-lo)||1;
@@ -103,7 +102,6 @@ const num=v=>{const n=parseFloat(String(v??"").replace(/[,₹\s]/g,""));return i
 const isGold=s=>/GOLD|SILV|^SGB/i.test(s);
 const sum=a=>a.reduce((s,x)=>s+x,0);
 const owners=()=>[...new Set(H.map(h=>h.owner))];
-
 function csvRows(t){
  const rows=[];let r=[],c="",q=false;
  for(let i=0;i<t.length;i++){const ch=t[i];
@@ -122,7 +120,7 @@ function parseHoldings(rows){
  const h=rows[hi].map(norm);
  const col=(...n)=>{for(const k of n){const i=h.findIndex(x=>x.startsWith(k));if(i>=0)return i}return -1};
  const cS=col("symbol","instrument","stock","company","scrip","name"),cQ=col("quantityavailable","qty","quantity"),
-  cA=col("averageprice","buyavg","avgcost","avgprice","averagecost","avg"),cL=col("previousclosingprice","ltp","closeprice","prevclose","closing","currentprice","price");
+ cA=col("averageprice","buyavg","avgcost","avgprice","averagecost","avg"),cL=col("previousclosingprice","ltp","closeprice","prevclose","closing","currentprice","price");
  if(cQ<0||cA<0||cL<0)throw new Error("quantity, average price or closing price column not found (headers seen: "+rows[hi].join(" | ")+")");
  const out=[];
  for(const r of rows.slice(hi+1)){
@@ -157,14 +155,14 @@ async function importFile(file){
  }catch(e){hmsg="Import failed: "+e.message}
  show();
 }
-// Zerodha's web table copies each row over three lines: symbol, a lone quantity, then tab-separated numbers
+// Zerodha's web table copies each row over three or more lines: symbol, a lone quantity, optional tag lines, then tab-separated numbers
 function fixPaste(t){
  const lines=t.split(/\r?\n/).map(l=>l.replace(/\s+$/,"")).filter(l=>l.trim()),rows=[];let sym=null;
  const isNum=s=>/^[\d,.\-+%₹\s]+$/.test(s);
  rows.push(lines[0].split("\t").map(s=>s.trim()));
  for(const l of lines.slice(1)){
   if(l.includes("\t")){const f=l.split("\t").map(s=>s.trim());if(sym!=null){rows.push([sym,...f]);sym=null}else if(!isNum(f[0]))rows.push(f)}
-  else if(!isNum(l.trim()))sym=l.trim();
+  else if(sym==null&&!isNum(l.trim()))sym=l.trim();
  }
  return rows;
 }
@@ -221,10 +219,10 @@ function holdings(){
  <div style="margin-top:6px">${who!=="All"?`<button id="hrm">Remove ${who}</button>`:""}<button id="hclear">Clear everything</button></div></div>`;
  const by={};
  for(const x of H.filter(x=>who==="All"||x.owner===who)){
-  const r=by[x.sym]||(by[x.sym]={sym:x.sym,qty:0,inv:0,ltp:x.ltp});
-  r.qty+=x.qty;r.inv+=x.qty*x.avg;r.ltp=x.ltp;
+  const r=by[x.sym]||(by[x.sym]={sym:x.sym,qty:0,inv:0,val:0,ltp:x.ltp});
+  r.qty+=x.qty;r.inv+=x.qty*x.avg;r.val+=x.qty*x.ltp;r.ltp=x.ltp;
  }
- const rows=Object.values(by).map(r=>({...r,val:r.qty*r.ltp,m:A[r.sym]||null})).sort((a,b)=>b.val-a.val);
+ const rows=Object.values(by).map(r=>({...r,m:A[r.sym]||null})).sort((a,b)=>b.val-a.val);
  const tv=sum(rows.map(r=>r.val)),ti=sum(rows.map(r=>r.inv)),pl=tv-ti;
  const gold=rows.filter(r=>isGold(r.sym)),gv=sum(gold.map(r=>r.val)),ev=tv-gv;
  const got=rows.filter(r=>r.m&&!isGold(r.sym)),peRows=got.filter(r=>r.m.pe>0);
@@ -246,9 +244,9 @@ function holdings(){
  h+=`<button id="han">${Object.keys(A).length>1?"Refresh analysis":"Analyse PE and EPS growth"}</button></div>`;
  h+=`<div class="card"><div class="wrap"><table><tr><th>Stock</th><th>Weight</th><th>P&L</th><th>PE</th><th>EPS gr.</th><th>PE chg</th><th>Price 1Y</th><th>vs 200d</th><th>Label</th></tr>`+
  rows.map(r=>{const m=r.m,c=!m?"mu":/Attractive|growth/.test(m.label)?"up":/risk|falling|Loss/.test(m.label)?"dn":"wa";
-  return `<tr><td><b>${r.sym}</b></td><td>${(r.val/tv*100).toFixed(1)}%</td><td class="${cl(r.val-r.inv)}">${f((r.val/r.inv-1)*100)}</td>
-  <td>${m&&m.pe!=null?m.pe.toFixed(1)+(m.pe>150?" ⚠":""):"—"}</td><td class="${cl(m&&m.epsG)}">${m?f(m.epsG)+(m.basis==="FY"?" FY":""):"—"}</td><td class="${cl(m&&m.peChg)}">${m?f(m.peChg):"—"}</td>
-  <td class="${cl(m&&m.price1y)}">${m?f(m.price1y):"—"}</td><td class="${cl(m&&m.dma)}">${m?f(m.dma):"—"}</td><td class="${isGold(r.sym)?"mu":c}">${isGold(r.sym)?"Gold / silver":m?m.label:"—"}</td></tr>`}).join("")+
+ return `<tr><td><b>${r.sym}</b></td><td>${(r.val/tv*100).toFixed(1)}%</td><td class="${cl(r.val-r.inv)}">${f((r.val/r.inv-1)*100)}</td>
+ <td>${m&&m.pe!=null?m.pe.toFixed(1)+(m.pe>150?" ⚠":""):"—"}</td><td class="${cl(m&&m.epsG)}">${m?f(m.epsG)+(m.basis==="FY"?" FY":""):"—"}</td><td class="${cl(m&&m.peChg)}">${m?f(m.peChg):"—"}</td>
+ <td class="${cl(m&&m.price1y)}">${m?f(m.price1y):"—"}</td><td class="${cl(m&&m.dma)}">${m?f(m.dma):"—"}</td><td class="${isGold(r.sym)?"mu":c}">${isGold(r.sym)?"Gold / silver":m?m.label:"—"}</td></tr>`}).join("")+
  `</table></div><div class="leg">Quantity = "Quantity Available" from the file, price = previous close. Compare the totals with Zerodha. EPS growth and PE change use trailing 4 quarters vs the 4 before, or the latest vs previous financial year when quarterly history is short (marked FY; then PE change compares today with a year ago on each year's reported EPS). ⚠ = PE above 150, probably a data problem (for example EPS in another currency). Gold and silver holdings have no PE, so they are skipped.</div></div>`;
  return h;
 }
