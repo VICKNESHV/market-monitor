@@ -97,9 +97,12 @@ function india(){
 // ---------- Holdings tab: everything here stays in this browser ----------
 const ls={get:k=>{try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}}};
 const lsSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
-let H=ls.get("mm_holdings")||[],W=ls.get("mm_worker")||"",A=ls.get("mm_analysis")||{},hmsg="";
+let H=ls.get("mm_holdings2")||[],W=ls.get("mm_worker")||"",A=ls.get("mm_analysis")||{},hmsg="",who="All";
 const inr=x=>x==null?"—":"₹"+Math.round(x).toLocaleString("en-IN");
-const num=v=>{const n=parseFloat(String(v??"").replace(/,/g,""));return isNaN(n)?null:n};
+const num=v=>{const n=parseFloat(String(v??"").replace(/[,₹\s]/g,""));return isNaN(n)?null:n};
+const isGold=s=>/GOLD|SILV|^SGB/i.test(s);
+const sum=a=>a.reduce((s,x)=>s+x,0);
+const owners=()=>[...new Set(H.map(h=>h.owner))];
 
 function csvRows(t){
  const rows=[];let r=[],c="",q=false;
@@ -114,21 +117,30 @@ function csvRows(t){
 }
 function parseHoldings(rows){
  const norm=s=>String(s??"").toLowerCase().replace(/[^a-z]/g,"");
- const hi=rows.findIndex(r=>r.some(c=>["symbol","instrument"].includes(norm(c))));
+ const hi=rows.findIndex(r=>r.some(c=>["symbol","instrument","stock","company","scrip","name"].includes(norm(c))));
  if(hi<0)throw new Error("no Symbol or Instrument column found");
- const h=rows[hi].map(norm),col=(...n)=>h.findIndex(x=>n.some(k=>x.startsWith(k)));
- const cS=col("symbol","instrument"),cQ=col("quantityavailable","qty"),cA=col("averageprice","avgcost"),cL=col("previousclosingprice","ltp"),cSec=col("sector");
- if(cQ<0||cA<0||cL<0)throw new Error("quantity, average price or closing price column not found");
+ const h=rows[hi].map(norm);
+ const col=(...n)=>{for(const k of n){const i=h.findIndex(x=>x.startsWith(k));if(i>=0)return i}return -1};
+ const cS=col("symbol","instrument","stock","company","scrip","name"),cQ=col("quantityavailable","qty","quantity"),
+  cA=col("averageprice","avgcost","avgprice","averagecost","avg"),cL=col("previousclosingprice","ltp","closeprice","prevclose","closing","currentprice","price");
+ if(cQ<0||cA<0||cL<0)throw new Error("quantity, average price or closing price column not found (headers seen: "+rows[hi].join(" | ")+")");
  const out=[];
  for(const r of rows.slice(hi+1)){
   const raw=String(r[cS]??"").trim(),qty=num(r[cQ]),avg=num(r[cA]),ltp=num(r[cL]);
   if(!raw||qty==null||avg==null||ltp==null||qty<=0||/^total$/i.test(raw))continue;
-  out.push({sym:raw.replace(/-(BE|BZ|T0|X1|XT|Z|IL|SM)$/,""),qty,avg,ltp,sector:cSec>=0?String(r[cSec]||""):""});
+  out.push({sym:raw.replace(/-(BE|BZ|T0|X1|XT|Z|IL|SM)$/,""),qty,avg,ltp});
  }
  if(!out.length)throw new Error("no holdings rows found");
  return out;
 }
+function save(owner,list){
+ H=H.filter(h=>h.owner!==owner).concat(list.map(x=>({...x,owner})));
+ A={};lsSet("mm_holdings2",H);lsSet("mm_analysis",A);who="All";
+ hmsg=`Saved ${list.length} holdings for ${owner}.`;
+}
+const ownerName=()=>(document.getElementById("hown").value.trim()||"Me");
 async function importFile(file){
+ const owner=ownerName();
  try{
   let sheets;
   if(/\.csv$/i.test(file.name))sheets=[csvRows(await file.text())];
@@ -141,12 +153,16 @@ async function importFile(file){
   let res=null,err=null;
   for(const s of sheets){try{res=parseHoldings(s);break}catch(e){err=e}}
   if(!res)throw err;
-  H=res;A={};lsSet("mm_holdings",H);lsSet("mm_analysis",A);hmsg=`Imported ${H.length} holdings.`;
+  save(owner,res);
  }catch(e){hmsg="Import failed: "+e.message}
  show();
 }
-const isGold=s=>/GOLD|SILV|^SGB/i.test(s);
-const sum=a=>a.reduce((s,x)=>s+x,0);
+function importPaste(){
+ const owner=ownerName(),t=document.getElementById("hpaste").value;
+ try{save(owner,parseHoldings(t.includes("\t")?t.split(/\r?\n/).map(l=>l.split("\t")):csvRows(t)))}
+ catch(e){hmsg="Paste failed: "+e.message}
+ show();
+}
 function metrics(r){
  if(!r||r.last==null)return{basis:"",price1y:null,dma:null,pe:null,epsG:null,peChg:null,label:"No data"};
  const q=(r.q||[]).map(x=>x[1]),a=(r.a||[]).map(x=>x[1]);
@@ -164,29 +180,40 @@ function metrics(r){
 }
 async function analyse(){
  if(!W){hmsg="Paste your Worker address first.";return show()}
- const raw={};
- const eq=H.filter(h=>!isGold(h.sym));
+ const raw={},eq=[...new Set(H.map(h=>h.sym))].filter(s=>!isGold(s));
  for(let i=0;i<eq.length;i+=15){
   hmsg=`Analysing ${Math.min(i+15,eq.length)} of ${eq.length}…`;show();
   try{
-   const r=await fetch(W+(W.includes("?")?"&":"?")+"s="+encodeURIComponent(eq.slice(i,i+15).map(h=>h.sym).join(",")));
+   const r=await fetch(W+(W.includes("?")?"&":"?")+"s="+encodeURIComponent(eq.slice(i,i+15).join(",")));
    if(!r.ok)throw new Error("HTTP "+r.status);
    Object.assign(raw,await r.json());
   }catch(e){hmsg="Worker error: "+e.message;return show()}
  }
  A={at:new Date().toISOString().slice(0,16).replace("T"," ")};
- for(const h of eq)A[h.sym]=metrics(raw[h.sym]);
+ for(const s of eq)A[s]=metrics(raw[s]);
  lsSet("mm_analysis",A);hmsg="Analysis done.";show();
 }
 function holdings(){
- let h=`<div class="card"><b>Import from Zerodha</b>
- <p class="s">In Zerodha Console: Portfolio → Holdings → download. Pick the file here. It is read on this device and saved only in this browser, never uploaded.</p>
- <label class="btn">Choose file<input type="file" id="hf" accept=".xlsx,.xls,.csv" hidden></label><button id="hclear">Clear data</button>
+ let h=`<div class="card"><b>Import holdings</b>
+ <p class="s">Zerodha Console: Portfolio → Holdings → download. Type whose holdings these are, then pick the file, or paste the table. Read on this device and saved only in this browser, never uploaded. Importing again for the same name replaces that person's holdings.</p>
+ <input type="text" id="hown" placeholder="Owner name (e.g. Me, Wife, Father)" value="${who!=="All"?who:""}">
+ <label class="btn">Choose file<input type="file" id="hf" accept=".xlsx,.xls,.csv" hidden></label>
+ <p class="s" style="margin-top:12px">Or select the holdings table on the Zerodha page, copy it, and paste here:</p>
+ <textarea id="hpaste" rows="3" style="width:100%;padding:8px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font:inherit"></textarea>
+ <button id="hpb">Import pasted table</button>
  <div class="mu" style="font-size:13px;margin-top:8px">${hmsg}</div></div>`;
  h+=`<div class="card"><b>Worker address</b><p class="s">Needed for PE and EPS growth. Your Cloudflare Worker's web address.</p>
  <input type="text" id="hw" placeholder="https://something.workers.dev" value="${W}"><button id="hws">Save</button></div>`;
  if(!H.length)return h;
- const rows=H.map(x=>({...x,val:x.qty*x.ltp,inv:x.qty*x.avg,m:A[x.sym]||null})).sort((a,b)=>b.val-a.val);
+ const os=owners();
+ h+=`<div class="card"><b>Whose holdings</b><div>${["All",...os].map(o=>`<button class="hwho" data-o="${o}" style="${o===who?"background:var(--tx);color:var(--bg)":""}">${o}</button>`).join("")}</div>
+ <div style="margin-top:6px">${who!=="All"?`<button id="hrm">Remove ${who}</button>`:""}<button id="hclear">Clear everything</button></div></div>`;
+ const by={};
+ for(const x of H.filter(x=>who==="All"||x.owner===who)){
+  const r=by[x.sym]||(by[x.sym]={sym:x.sym,qty:0,inv:0,ltp:x.ltp});
+  r.qty+=x.qty;r.inv+=x.qty*x.avg;r.ltp=x.ltp;
+ }
+ const rows=Object.values(by).map(r=>({...r,val:r.qty*r.ltp,m:A[r.sym]||null})).sort((a,b)=>b.val-a.val);
  const tv=sum(rows.map(r=>r.val)),ti=sum(rows.map(r=>r.inv)),pl=tv-ti;
  const gold=rows.filter(r=>isGold(r.sym)),gv=sum(gold.map(r=>r.val)),ev=tv-gv;
  const got=rows.filter(r=>r.m&&!isGold(r.sym)),peRows=got.filter(r=>r.m.pe>0);
@@ -194,7 +221,7 @@ function holdings(){
  const pPE=peRows.length?sum(peRows.map(r=>r.val))/sum(peRows.map(r=>r.val/r.m.pe)):null;
  const share=f=>ev?sum(got.filter(f).map(r=>r.val))/ev*100:0;
  const top5=tv?sum(rows.slice(0,5).map(r=>r.val))/tv*100:0;
- h+=`<div class="card"><b>Portfolio</b><div class="grid">
+ h+=`<div class="card"><b>Portfolio${who!=="All"?" · "+who:os.length>1?" · all":""}</b><div class="grid">
  <div class="m"><small>Invested</small><b>${inr(ti)}</b></div><div class="m"><small>Value</small><b>${inr(tv)}</b></div>
  <div class="m"><small>P&L</small><b class="${cl(pl)}">${inr(pl)} (${f(ti?pl/ti*100:null)})</b></div>
  <div class="m"><small>Holdings</small><b>${rows.length}</b></div><div class="m"><small>Top 5 weight</small><b>${top5.toFixed(0)}%</b></div>
@@ -205,21 +232,24 @@ function holdings(){
  <div class="m"><small>Earnings falling</small><b class="dn">${share(r=>/falling|risk/.test(r.m.label)).toFixed(0)}%</b></div>
  <div class="m"><small>Below 200-day</small><b>${share(r=>r.m.dma<0).toFixed(0)}%</b></div></div>
  <div class="leg">Equity figures cover the non-gold/silver part only. Equity PE = value-weighted (total value ÷ total earnings) over holdings with positive earnings. Analysis from ${A.at}. Missing data is shown as —, never estimated.</div>`;
- h+=`<button id="han">${got.length?"Refresh analysis":"Analyse PE and EPS growth"}</button></div>`;
+ h+=`<button id="han">${Object.keys(A).length>1?"Refresh analysis":"Analyse PE and EPS growth"}</button></div>`;
  h+=`<div class="card"><div class="wrap"><table><tr><th>Stock</th><th>Weight</th><th>P&L</th><th>PE</th><th>EPS gr.</th><th>PE chg</th><th>Price 1Y</th><th>vs 200d</th><th>Label</th></tr>`+
  rows.map(r=>{const m=r.m,c=!m?"mu":/Attractive|growth/.test(m.label)?"up":/risk|falling|Loss/.test(m.label)?"dn":"wa";
   return `<tr><td><b>${r.sym}</b></td><td>${(r.val/tv*100).toFixed(1)}%</td><td class="${cl(r.val-r.inv)}">${f((r.val/r.inv-1)*100)}</td>
   <td>${m&&m.pe!=null?m.pe.toFixed(1)+(m.pe>150?" ⚠":""):"—"}</td><td class="${cl(m&&m.epsG)}">${m?f(m.epsG)+(m.basis==="FY"?" FY":""):"—"}</td><td class="${cl(m&&m.peChg)}">${m?f(m.peChg):"—"}</td>
   <td class="${cl(m&&m.price1y)}">${m?f(m.price1y):"—"}</td><td class="${cl(m&&m.dma)}">${m?f(m.dma):"—"}</td><td class="${isGold(r.sym)?"mu":c}">${isGold(r.sym)?"Gold / silver":m?m.label:"—"}</td></tr>`}).join("")+
- `</table></div><div class="leg">Quantity = "Quantity Available" from your file, price = previous close. Compare the total with Zerodha. EPS growth and PE change use trailing 4 quarters vs the 4 before, or the latest vs previous financial year when quarterly history is short (marked FY; then PE change compares today with a year ago on each year's reported EPS). ⚠ = PE above 150, probably a data problem (for example EPS in another currency). Gold and silver holdings have no PE, so they are skipped. Labels here have no 5-year PE percentile, so there is no "cheap" label.</div></div>`;
+ `</table></div><div class="leg">Quantity = "Quantity Available" from the file, price = previous close. Compare the totals with Zerodha. EPS growth and PE change use trailing 4 quarters vs the 4 before, or the latest vs previous financial year when quarterly history is short (marked FY; then PE change compares today with a year ago on each year's reported EPS). ⚠ = PE above 150, probably a data problem (for example EPS in another currency). Gold and silver holdings have no PE, so they are skipped.</div></div>`;
  return h;
 }
 function bindHoldings(){
  const $=id=>document.getElementById(id);
  $("hf").onchange=e=>e.target.files[0]&&importFile(e.target.files[0]);
- $("hclear").onclick=()=>{H=[];A={};lsSet("mm_holdings",H);lsSet("mm_analysis",A);hmsg="Cleared.";show()};
+ $("hpb").onclick=importPaste;
  $("hws").onclick=()=>{W=$("hw").value.trim().replace(/\/+$/,"");lsSet("mm_worker",W);hmsg="Saved.";show()};
  if($("han"))$("han").onclick=analyse;
+ if($("hclear"))$("hclear").onclick=()=>{H=[];A={};who="All";lsSet("mm_holdings2",H);lsSet("mm_analysis",A);hmsg="Cleared.";show()};
+ if($("hrm"))$("hrm").onclick=()=>{H=H.filter(h=>h.owner!==who);who="All";lsSet("mm_holdings2",H);hmsg="Removed.";show()};
+ document.querySelectorAll(".hwho").forEach(b=>b.onclick=()=>{who=b.dataset.o;show()});
 }
 function show(){
  const t=(location.hash.slice(1)||"home").toLowerCase();
