@@ -27,9 +27,19 @@ svg{width:100%;height:46px;display:block}
 .bar{display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--bd);margin-top:6px}.bar i{display:block;height:100%}
 .wrap{overflow-x:auto}table{border-collapse:collapse;width:100%;min-width:960px;font-size:13px}
 th,td{padding:6px;border-bottom:1px solid var(--bd);text-align:right;white-space:nowrap}th:first-child,td:first-child{text-align:left}th:last-child,td:last-child{text-align:left}
-input[type=text],input[type=number],input[type=date],select{width:100%;padding:8px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font:inherit;margin-top:6px}
+input[type=text]{width:100%;padding:8px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font:inherit}
 button,label.btn{display:inline-block;padding:8px 14px;border-radius:8px;border:1px solid var(--bd);background:var(--card);color:var(--tx);cursor:pointer;font:inherit;font-weight:600;margin:6px 6px 0 0}
 textarea{width:100%;padding:8px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font:inherit;resize:vertical}
+.collapsible-header{display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;padding:10px;background:var(--bd);border-radius:8px;margin-top:12px;font-weight:600}
+.collapsible-header:hover{opacity:0.8}
+.collapsible-header .toggle{display:inline-block;width:16px;text-align:center;font-size:14px;transition:transform 0.2s}
+.collapsible-header.open .toggle{transform:rotate(90deg)}
+.collapsible-content{display:none;margin-top:8px}
+.collapsible-header.open + .collapsible-content{display:block}
+.asset-filters{display:flex;gap:6px;margin:12px 0;flex-wrap:wrap}
+.asset-filters button{padding:6px 12px;font-size:12px;border-radius:6px;border:1px solid var(--bd);background:var(--card);color:var(--tx);cursor:pointer;font-weight:600;transition:all 0.2s}
+.asset-filters button.active{background:var(--tx);color:var(--bg)}
+.table-section{margin-bottom:12px}
 </style></head><body>
 <h1>Market Monitor</h1><p class="s" id="upd"></p>
 <nav id="nav"></nav>
@@ -40,59 +50,61 @@ const TABS=["Home","ETFs","Macro","India","Holdings"];
 const f=(x,d=1,u="%")=>x==null?"—":(x>0?"+":"")+x.toFixed(d)+u;
 const cl=x=>x==null?"mu":x>0?"up":x<0?"dn":"mu";
 let M={},I={},H=[],W="",A={},hmsg="",who="All";
+let assetClassFilter={eq:true,mf:true,gold:true};
+let collapsedSections={};
 const get=u=>fetch(u+"?"+Date.now()).then(r=>r.json()).catch(()=>null);
 function spark(a,color){
-  if(!a||a.length<2)return"";
-  const lo=Math.min(...a),hi=Math.max(...a),r=(hi-lo)||1;
-  const p=a.map((v,i)=>(i/(a.length-1)*100).toFixed(1)+","+(44-(v-lo)/r*40).toFixed(1)).join(" ");
-  return `<svg viewBox="0 0 100 46" preserveAspectRatio="none" role="img"><polyline points="${p}" fill="none" stroke="${color}" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg>`;
+ if(!a||a.length<2)return"";
+ const lo=Math.min(...a),hi=Math.max(...a),r=(hi-lo)||1;
+ const p=a.map((v,i)=>(i/(a.length-1)*100).toFixed(1)+","+(44-(v-lo)/r*40).toFixed(1)).join(" ");
+ return `<svg viewBox="0 0 100 46" preserveAspectRatio="none" role="img"><polyline points="${p}" fill="none" stroke="${color}" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg>`;
 }
 function card(x){
-  const y=x.isYield,u=y?" pts":"%",d=y?2:1;
-  const col=cl(x.m1)==="up"?"var(--up)":cl(x.m1)==="dn"?"var(--dn)":"var(--mut)";
-  const dma=x.vsDma==null?"—":x.vsDma>=0?"Above":"Below";
-  return `<div class="card"><div class="top"><b>${x.name}</b><b>${x.last.toLocaleString(undefined,{maximumFractionDigits:y?2:2})}${y?"%":""}</b></div>
-  ${x.desc?`<div class="desc">${x.desc}</div>`:""}
-  ${x.stale?'<div class="wa" style="font-size:12px">Stale: last price '+x.asOf+'</div>':""}
-  ${spark(x.spark,col)}
-  <div class="grid"><div class="m"><small>1 day</small><b class="${cl(x.d1)}">${f(x.d1,d,u)}</b></div>
-  <div class="m"><small>1 week</small><b class="${cl(x.d5)}">${f(x.d5,d,u)}</b></div>
-  <div class="m"><small>1 month</small><b class="${cl(x.m1)}">${f(x.m1,d,u)}</b></div>
-  <div class="m"><small>1 year</small><b class="${cl(x.y1)}">${f(x.y1,d,u)}</b></div>
-  <div class="m"><small>2 years</small><b class="${cl(x.y2)}">${f(x.y2,d,u)}</b></div>
-  <div class="m"><small>5 years</small><b class="${cl(x.y5)}">${f(x.y5,d,u)}</b></div>
-  ${y?"":`<div class="m"><small>From 1Y high</small><b class="${cl(x.fromHigh)}">${f(x.fromHigh)}</b></div>
-  <div class="m"><small>200-day avg</small><b class="${cl(x.vsDma)}">${dma}</b></div>`}</div></div>`;
+ const y=x.isYield,u=y?" pts":"%",d=y?2:1;
+ const col=cl(x.m1)==="up"?"var(--up)":cl(x.m1)==="dn"?"var(--dn)":"var(--mut)";
+ const dma=x.vsDma==null?"—":x.vsDma>=0?"Above":"Below";
+ return `<div class="card"><div class="top"><b>${x.name}</b><b>${x.last.toLocaleString(undefined,{maximumFractionDigits:y?2:2})}${y?"%":""}</b></div>
+ ${x.desc?`<div class="desc">${x.desc}</div>`:""}
+ ${x.stale?'<div class="wa" style="font-size:12px">Stale: last price '+x.asOf+'</div>':""}
+ ${spark(x.spark,col)}
+ <div class="grid"><div class="m"><small>1 day</small><b class="${cl(x.d1)}">${f(x.d1,d,u)}</b></div>
+ <div class="m"><small>1 week</small><b class="${cl(x.d5)}">${f(x.d5,d,u)}</b></div>
+ <div class="m"><small>1 month</small><b class="${cl(x.m1)}">${f(x.m1,d,u)}</b></div>
+ <div class="m"><small>1 year</small><b class="${cl(x.y1)}">${f(x.y1,d,u)}</b></div>
+ <div class="m"><small>2 years</small><b class="${cl(x.y2)}">${f(x.y2,d,u)}</b></div>
+ <div class="m"><small>5 years</small><b class="${cl(x.y5)}">${f(x.y5,d,u)}</b></div>
+ ${y?"":`<div class="m"><small>From 1Y high</small><b class="${cl(x.fromHigh)}">${f(x.fromHigh)}</b></div>
+ <div class="m"><small>200-day avg</small><b class="${cl(x.vsDma)}">${dma}</b></div>`}</div></div>`;
 }
 function home(){
-  const a=M.alerts||[],act=a.filter(x=>!x.cleared),old=a.filter(x=>x.cleared);
-  const row=x=>`<div class="al"><span>${x.new?'<span class="new">NEW</span> ':""}${x.text}</span><span class="mu" style="margin-left:auto;font-size:12px">${x.date.slice(5)}</span></div>`;
-  const err=(M.errors||[]);
-  return `<div class="card"><b>Needs attention (${act.length})</b>${act.length?act.map(row).join(""):'<div class="mu">Nothing unusual right now.</div>'}</div>
-  ${old.length?`<div class="card"><b>Cleared this week</b>${old.map(row).join("")}</div>`:""}
-  <div class="card"><b>Data health</b>${err.length?err.map(e=>`<div class="wa" style="font-size:13px">${e}</div>`).join(""):'<div class="up">All sources loaded.</div>'}</div>`;
+ const a=M.alerts||[],act=a.filter(x=>!x.cleared),old=a.filter(x=>x.cleared);
+ const row=x=>`<div class="al"><span>${x.new?'<span class="new">NEW</span> ':""}${x.text}</span><span class="mu" style="margin-left:auto;font-size:12px">${x.date.slice(5)}</span></div>`;
+ const err=(M.errors||[]);
+ return `<div class="card"><b>Needs attention (${act.length})</b>${act.length?act.map(row).join(""):'<div class="mu">Nothing unusual right now.</div>'}</div>
+ ${old.length?`<div class="card"><b>Cleared this week</b>${old.map(row).join("")}</div>`:""}
+ <div class="card"><b>Data health</b>${err.length?err.map(e=>`<div class="wa" style="font-size:13px">${e}</div>`).join(""):'<div class="up">All sources loaded.</div>'}</div>`;
 }
 function etfs(){return `<div class="cards">${(M.etfs||[]).map(card).join("")}</div>`}
 function macro(){
-  let h="";
-  if(M.fed)h+=`<div class="card"><b>Fed target rate</b><div class="grid"><div class="m"><small>Range</small><b>${M.fed.lower}–${M.fed.upper}%</b></div>
-  <div class="m"><small>Last change</small><b>${M.fed.lastChange?M.fed.lastChange.date+" ("+M.fed.lastChange.from+"→"+M.fed.lastChange.to+")":"none in 60 days"}</b></div></div></div>`;
-  if(M.ratio)h+=`<div class="card"><div class="top"><b>Gold / silver ratio</b><b>${M.ratio.ratio}</b></div>${spark(M.ratio.spark,"var(--wa)")}<div class="leg">10-year percentile: ${M.ratio.pct} (highest 7.5% / lowest 2.2%)</div></div>`;
-  return h+`<div class="cards">${(M.macro||[]).map(card).join("")}</div>`;
+ let h="";
+ if(M.fed)h+=`<div class="card"><b>Fed target rate</b><div class="grid"><div class="m"><small>Range</small><b>${M.fed.lower}–${M.fed.upper}%</b></div>
+ <div class="m"><small>Last change</small><b>${M.fed.lastChange?M.fed.lastChange.date+" ("+M.fed.lastChange.from+"→"+M.fed.lastChange.to+")":"none in 60 days"}</b></div></div></div>`;
+ if(M.ratio)h+=`<div class="card"><div class="top"><b>Gold / silver ratio</b><b>${M.ratio.ratio}</b></div>${spark(M.ratio.spark,"var(--wa)")}<div class="leg">10-year percentile: ${M.ratio.pct} (high = ...)</div></div>`;
+ return h+`<div class="cards">${(M.macro||[]).map(card).join("")}</div>`;
 }
 function india(){
-  if(!I.indices)return '<div class="card mu">data.json not found.</div>';
-  return `<p class="s">As of ${I.asOf} · exact values from NSE daily index files</p><div class="cards">`+I.indices.map(r=>{
-   const c=/Attractive|Cheap, earnings growth|High growth/.test(r.label)?"up":/risk|Over|Expensive|falling/.test(r.label)?"dn":"wa";
-   const a=Math.abs(r.epsGrowth||0),b=Math.abs(r.peChange||0),s=(a+b)||1;
-   return `<div class="card"><div class="top"><b>${r.name}</b><span class="tag ${c}">${r.label}</span></div>
-   <div class="grid"><div class="m"><small>Price 1Y</small><b class="${cl(r.priceChange)}">${f(r.priceChange)}</b></div>
-   <div class="m"><small>EPS growth</small><b class="${cl(r.epsGrowth)}">${f(r.epsGrowth)}</b></div>
-   <div class="m"><small>PE change</small><b class="${cl(r.peChange)}">${f(r.peChange)}</b></div>
-   <div class="m"><small>PE now</small><b>${r.pe}</b></div><div class="m"><small>PE 1Y ago</small><b>${r.peAgo}</b></div>
-   <div class="m"><small>PE pctile 5Y</small><b>${r.pePercentile==null?"—":Math.round(r.pePercentile)}</b></div></div>
-   <div class="bar"><i style="width:${a/s*100}%;background:${r.epsGrowth>=0?"var(--up)":"var(--dn)"}"></i><i style="width:${b/s*100}%;background:${r.peChange>=0?"var(--wa)":"var(--mut)"}"></i></div>
-   <div class="leg">Left: EPS effect · Right: PE effect</div></div>`}).join("")+"</div>";
+ if(!I.indices)return '<div class="card mu">data.json not found.</div>';
+ return `<p class="s">As of ${I.asOf} · exact values from NSE daily index files</p><div class="cards">`+I.indices.map(r=>{
+  const c=/Attractive|Cheap, earnings growth|High growth/.test(r.label)?"up":/risk|Over|Expensive|falling/.test(r.label)?"dn":"wa";
+  const a=Math.abs(r.epsGrowth||0),b=Math.abs(r.peChange||0),s=(a+b)||1;
+  return `<div class="card"><div class="top"><b>${r.name}</b><span class="tag ${c}">${r.label}</span></div>
+  <div class="grid"><div class="m"><small>Price 1Y</small><b class="${cl(r.priceChange)}">${f(r.priceChange)}</b></div>
+  <div class="m"><small>EPS growth</small><b class="${cl(r.epsGrowth)}">${f(r.epsGrowth)}</b></div>
+  <div class="m"><small>PE change</small><b class="${cl(r.peChange)}">${f(r.peChange)}</b></div>
+  <div class="m"><small>PE now</small><b>${r.pe}</b></div><div class="m"><small>PE 1Y ago</small><b>${r.peAgo}</b></div>
+  <div class="m"><small>PE pctile 5Y</small><b>${r.pePercentile==null?"—":Math.round(r.pePercentile)}</b></div></div>
+  <div class="bar"><i style="width:${a/s*100}%;background:${r.epsGrowth>=0?"var(--up)":"var(--dn)"}"></i><i style="width:${b/s*100}%;background:${r.peChange>=0?"var(--wa)":"var(--mut)"}"></i></div>
+  <div class="leg">Left: EPS effect · Right: PE effect</div></div>`}).join("")+"</div>";
 }
 
 const ls={get:k=>{try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}}};
@@ -100,616 +112,287 @@ const lsSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
 const inr=x=>x==null?"—":"₹"+Math.round(x).toLocaleString("en-IN");
 const num=v=>{const n=parseFloat(String(v??"").replace(/[,₹\s]/g,""));return isNaN(n)?null:n};
 const isGold=s=>/GOLD|SILV|^SGB/i.test(s);
-const isMF=s=>/DIRECT|GROWTH|FUND|MF|PLAN/i.test(s);
+const isMF=s=>/DIRECT|GROWTH|FUND|MF|PLAN|INDEX FUND/i.test(s);
 const sum=a=>a.reduce((s,x)=>s+x,0);
-const owners=()=>[...new Set((H||[]).map(h=>h.owner).filter(Boolean))];
+const owners=()=>[...new Set(H.map(h=>h.owner))];
 const normSym=s=>String(s??"").trim().toUpperCase().replace(/-(BE|BZ|T0|X1|XT|Z|IL|SM)$/,"" );
 
 function csvRows(t){
-  const rows=[];let r=[],c="",q=false;
-  for(let i=0;i<t.length;i++){const ch=t[i];
-   if(q){if(ch=='"'){if(t[i+1]=='"'){c+='"';i++}else q=false}else c+=ch}
-   else if(ch=='"')q=true;
-   else if(ch===","){r.push(c);c=""}
-   else if(ch==="\n"||ch==="\r"){if(ch==="\r"&&t[i+1]==="\n")i++;r.push(c);rows.push(r);r=[];c=""}
-   else c+=ch}
-  if(c||r.length){r.push(c);rows.push(r)}
-  return rows;
+ const rows=[];let r=[],c="",q=false;
+ for(let i=0;i<t.length;i++){const ch=t[i];
+  if(q){if(ch=='"'){if(t[i+1]=='"'){c+='"';i++}else q=false}else c+=ch}
+  else if(ch===","){r.push(c);c=""}
+  else if(ch==="\n"||ch==="\r"){if(ch==="\r"&&t[i+1]==="\n")i++;r.push(c);rows.push(r);r=[];c=""}
+  else c+=ch}
+ if(c||r.length){r.push(c);rows.push(r)}
+ return rows;
 }
 function parseHoldings(rows){
-  const norm=s=>String(s??"").toLowerCase().replace(/[^a-z]/g,"");
-  const hi=rows.findIndex(r=>r.some(c=>["symbol","instrument","stock","company","scrip","name"].includes(norm(c))));
-  if(hi<0)throw new Error("no Symbol or Instrument column found");
-  const h=rows[hi].map(norm);
-  const col=(...n)=>{for(const k of n){const i=h.findIndex(x=>x.startsWith(k));if(i>=0)return i}return -1};
-  const cS=col("symbol","instrument","stock","company","scrip","name"),cQ=col("quantityavailable","qty","quantity"),
-  cA=col("averageprice","buyavg","avgcost","avgprice","averagecost","avg"),cL=col("previousclosingprice","ltp","closeprice","prevclose","closing","currentprice","price");
-  if(cQ<0||cA<0||cL<0)throw new Error("quantity, average price or closing price column not found (headers seen: "+rows[hi].join(" | ")+")");
-  const out=[];
-  for(const r of rows.slice(hi+1)){
-   const raw=String(r[cS]??"").trim(),qty=num(r[cQ]),avg=num(r[cA]),ltp=num(r[cL]);
-   if(!raw||qty==null||avg==null||ltp==null||qty<=0||/^total$/i.test(raw))continue;
-   out.push({sym:normSym(raw),qty,avg,ltp});
-  }
-  if(!out.length)throw new Error("no holdings rows found");
-  return out;
+ const norm=s=>String(s??"").toLowerCase().replace(/[^a-z]/g,"");
+ const hi=rows.findIndex(r=>r.some(c=>["symbol","instrument","stock","company","scrip","name"].includes(norm(c))));
+ if(hi<0)throw new Error("no Symbol or Instrument column found");
+ const h=rows[hi].map(norm);
+ const col=(...n)=>{for(const k of n){const i=h.findIndex(x=>x.startsWith(k));if(i>=0)return i}return -1};
+ const cS=col("symbol","instrument","stock","company","scrip","name"),cQ=col("quantityavailable","qty","quantity"),
+ cA=col("averageprice","buyavg","avgcost","avgprice","averagecost","avg"),cL=col("previousclosingprice","ltp","closeprice","prevclose","closing","currentprice","price");
+ if(cQ<0||cA<0||cL<0)throw new Error("quantity, average price or closing price column not found (headers seen: "+rows[hi].join(" | ")+")");
+ const out=[];
+ for(const r of rows.slice(hi+1)){
+  const raw=String(r[cS]??"").trim(),qty=num(r[cQ]),avg=num(r[cA]),ltp=num(r[cL]);
+  if(!raw||qty==null||avg==null||ltp==null||qty<=0||/^total$/i.test(raw))continue;
+  out.push({sym:normSym(raw),qty,avg,ltp});
+ }
+ if(!out.length)throw new Error("no holdings rows found");
+ return out;
+}
+function normalizeNumber(v){
+ if(v==null||v==="")return null;
+ if(typeof v==="number")return Number.isFinite(v)?v:null;
+ if(typeof v==="string"){
+  const cleaned=v.replace(/[^0-9.\-]/g,"");
+  if(!cleaned||cleaned==="-"||cleaned===".")return null;
+  const n=Number(cleaned);
+  return Number.isFinite(n)?n:null;
+ }
+ return null;
+}
+function normalizeSymbol(v){
+ return String(v ?? "").trim().replace(/\s+/g," ").toUpperCase().replace(/-(BE|BZ|T0|X1|XT|Z|IL|SM)$/i,"");
 }
 function parseJsonHoldings(data){
-  let holdings=[];
-  if(Array.isArray(data)) holdings=data;
-  else if(data && typeof data === "object") {
-   const candidates=[
-    data?.status === "success" ? data?.data?.result?.eq : null,
-    data?.result?.eq,
-    data?.data?.result?.holdings,
-    data?.result?.holdings,
-    data?.eq,
-    data?.holdings,
-    data?.data?.eq,
-    data?.data?.holdings,
-    data?.payload?.eq,
-    data?.payload?.holdings
-   ];
-   for(const candidate of candidates){ if(Array.isArray(candidate)){ holdings=candidate; break; } }
+ const rows=[];
+ function walk(node){
+  if(!node||typeof node!=="object")return;
+  if(Array.isArray(node)){
+   for(const item of node)walk(item);
+   return;
   }
-  if(!Array.isArray(holdings)||!holdings.length) throw new Error("JSON file does not contain a holdings array");
-  const out=[];
-  for(const row of holdings){
-   const sym = row.tradingsymbol || row.symbol || row.instrument || row.stock || row.company || row.scrip || row.name;
-   const qty = num(row.quantity_available ?? row.quantity ?? row.total_quantity ?? row.qty ?? row.quantity_long_term ?? row.quantity_t1);
-   const avg = num(row.buy_average ?? row.average_price ?? row.avgprice ?? row.averagecost ?? row.avg ?? row.avg_price ?? row.buyAvg);
-   const price = num(row.ltp ?? row.close_price ?? row.current_price ?? row.price ?? row.last_price ?? row.closing_price ?? row.ltps);
-   if(!sym||qty==null||avg==null||price==null||qty<=0) continue;
-   out.push({
-     sym:normSym(sym),
-     qty:Number(qty),
-     avg:Number(avg),
-     ltp:Number(price),
-     sector:row.sector || "",
-     cap:row.cap || "",
-     weight:row.weight==null?null:Number(row.weight),
-     unrealizedProfit:row.unrealized_profit==null?null:Number(row.unrealized_profit),
-     isMutualFund:row.isin_breakdown && typeof row.isin_breakdown === "object" ? true : false,
-     mfHoldings:row.isin_breakdown || {},
-     instrumentType:row.instrument_type || ""
-   });
+  if(Array.isArray(node.eq))for(const item of node.eq)rows.push({...item,__type:"eq"});
+  if(Array.isArray(node.mf))for(const item of node.mf)rows.push({...item,__type:"mf"});
+  if(Array.isArray(node.holdings))for(const item of node.holdings)rows.push({...item,__type:"eq"});
+  for(const key of ["eq","mf","holdings","data","result","payload"]) {
+   if(node[key]&&typeof node[key]==="object")walk(node[key]);
   }
-  if(!out.length) throw new Error("No valid holdings found in the JSON file");
-  return out;
-}
-function normalizeLegacyHoldings(list){
-  return (list || []).map(item => {
-    if (!item) return item;
-    if (!item.type) {
-      const key = item.sym || item.name || "";
-      return { ...item, type: isMF(key) ? "mf" : "stock" };
-    }
-    return item;
+ }
+ walk(data);
+ if(!rows.length)throw new Error("JSON file does not contain a holdings array");
+ const out=[];
+ for(const row of rows){
+  const type=row.__type || (row.isin_breakdown && typeof row.isin_breakdown === "object" ? "mf" : "eq");
+  const sym=normalizeSymbol(row.tradingsymbol || row.symbol || row.instrument || row.stock || row.company || row.scrip || row.name || row.fundName || row.mfName);
+  const qty=normalizeNumber(row.quantity_available ?? row.quantity ?? row.total_quantity ?? row.qty ?? row.quantity_long_term ?? row.quantity_t1 ?? row.units ?? row.qtyAvailable ?? row.quantityAvailable);
+  const avg=normalizeNumber(row.buy_average ?? row.average_price ?? row.avgprice ?? row.averagecost ?? row.avg ?? row.avg_price ?? row.buyAvg ?? row.purchasePrice);
+  const ltp=normalizeNumber(row.ltp ?? row.close_price ?? row.current_price ?? row.price ?? row.last_price ?? row.closing_price ?? row.closingPrice ?? row.nav ?? row.netAssetValue ?? row.currentValue);
+  if(!sym||qty==null||avg==null||ltp==null||qty<=0)continue;
+  out.push({
+   sym,
+   qty:Number(qty),
+   avg:Number(avg),
+   ltp:Number(ltp),
+   type,
+   isMutualFund:type==="mf",
+   sector:row.sector || "",
+   cap:row.cap || "",
+   weight:normalizeNumber(row.weight),
+   unrealizedProfit:normalizeNumber(row.unrealized_profit),
+   closingValue:normalizeNumber(row.closing_value),
+   instrumentType:row.instrument_type || "",
+   isin:row.isin || "",
+   holdingsDate:row.holdings_date || "",
+   mfHoldings:row.isin_breakdown && typeof row.isin_breakdown === "object" ? row.isin_breakdown : {}
   });
+ }
+ if(!out.length)throw new Error("No valid holdings found in the JSON file");
+ return out;
 }
 function save(owner,list){
-  H=H.filter(h=>h.owner!==owner).concat(list.map(x => ({
-    ...x,
-    owner,
-    type: x.type || (isMF(x.sym || x.name || "") ? "mf" : "stock")
-  })));
-  A={};lsSet("mm_holdings2", normalizeLegacyHoldings(H));lsSet("mm_analysis",A);who="All";
-  hmsg=`Saved ${list.length} holdings for ${owner}.`;
+ H=H.filter(h=>h.owner!==owner).concat(list.map(x=>({...x,owner})));
+ A={};lsSet("mm_holdings2",H);lsSet("mm_analysis",A);who="All";
+ hmsg=`Saved ${list.length} holdings for ${owner}.`;
 }
 const ownerName=()=>(document.getElementById("hown").value.trim()||"Me");
 async function importFile(file){
-  const owner=ownerName();
-  try{
-   let sheets=[];
-   if(/\.json$/i.test(file.name)){
-    const parsed=parseJsonHoldings(JSON.parse(await file.text()));
-    save(owner,parsed);
-    show();
-    return;
-   }
-   if(/\.csv$/i.test(file.name))sheets=[csvRows(await file.text())];
-   else{
-    if(typeof XLSX==="undefined")throw new Error("Excel reader did not load. Save the file as CSV or JSON and import that");
-    const wb=XLSX.read(await file.arrayBuffer(),{type:"array"});
-    const names=[...wb.SheetNames].sort((a,b)=>(/equity|holding/i.test(b)?1:0)-(/equity|holding/i.test(a)?1:0));
-    sheets=names.map(n=>XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,defval:""}));
-   }
-   let res=null,err=null;
-   for(const s of sheets){try{res=parseHoldings(s);break}catch(e){err=e}}
-   if(!res)throw err;
-   save(owner,res);
-  }catch(e){hmsg="Import failed: "+e.message}
-  show();
+ const owner=ownerName();
+ try{
+  let sheets=[];
+  if(/\.json$/i.test(file.name)){
+   const parsed=parseJsonHoldings(JSON.parse(await file.text()));
+   save(owner,parsed);
+   show();
+   return;
+  }
+  if(/\.csv$/i.test(file.name))sheets=[csvRows(await file.text())];
+  else{
+   if(typeof XLSX==="undefined")throw new Error("Excel reader did not load. Save the file as CSV or JSON and import that");
+   const wb=XLSX.read(await file.arrayBuffer(),{type:"array"});
+   const names=[...wb.SheetNames].sort((a,b)=>(/equity|holding/i.test(b)?1:0)-(/equity|holding/i.test(a)?1:0));
+   sheets=names.map(n=>XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,defval:""}));
+  }
+  let res=null,err=null;
+  for(const s of sheets){try{res=parseHoldings(s);break}catch(e){err=e}}
+  if(!res)throw err;
+  save(owner,res);
+ }catch(e){hmsg="Import failed: "+e.message}
+ show();
 }
 function fixPaste(t){
-  const lines=t.split(/\r?\n/).map(l=>l.replace(/\s+$/,"")).filter(l=>l.trim()),rows=[];let sym=null;
-  const isNum=s=>/^[\d,\.\-+%₹\s]+$/.test(s);
-  rows.push(lines[0].split("\t").map(s=>s.trim()));
-  for(const l of lines.slice(1)){
-   if(l.includes("\t")){const f=l.split("\t").map(s=>s.trim());if(sym!=null){rows.push([sym,...f]);sym=null}else if(!isNum(f[0]))rows.push(f)}
-   else if(sym==null&&!isNum(l.trim()))sym=l.trim().split(/\s+/)[0];
-  }
-  return rows;
+ const lines=t.split(/\r?\n/).map(l=>l.replace(/\s+$/,"")) .filter(l=>l.trim()),rows=[];let sym=null;
+ const isNum=s=>/^[\d,\.\-+%₹\s]+$/.test(s);
+ rows.push(lines[0].split("\t").map(s=>s.trim()));
+ for(const l of lines.slice(1)){
+  if(l.includes("\t")){const f=l.split("\t").map(s=>s.trim());if(sym!=null){rows.push([sym,...f]);sym=null}else if(!isNum(f[0]))rows.push(f)}
+  else if(sym==null&&!isNum(l.trim()))sym=l.trim().split(/\s+/)[0];
+ }
+ return rows;
 }
 function importPaste(){
-  const owner=ownerName(),t=document.getElementById("hpaste").value;
-  try{save(owner,parseHoldings(t.includes("\t")?fixPaste(t):csvRows(t)))}
-  catch(e){hmsg="Paste failed: "+e.message}
-  show();
+ const owner=ownerName(),t=document.getElementById("hpaste").value;
+ try{save(owner,parseHoldings(t.includes("\t")?fixPaste(t):csvRows(t)))}
+ catch(e){hmsg="Paste failed: "+e.message}
+ show();
 }
 function metrics(r){
-  if(!r||r.last==null)return{basis:"",price1y:null,dma:null,pe:null,epsG:null,peChg:null,label:"No data"};
-  const qd=(r.q||[]),q=qd.map(x=>x[1]),a=(r.a||[]).map(x=>x[1]);
-  const contig=qd.length>=8&&qd.slice(-8).every((x,i,z)=>i===0||(new Date(x[0])-new Date(z[i-1][0]))/864e5<110);
-  let now=null,ago=null,basis="";
-  if(contig){now=sum(q.slice(-4));ago=sum(q.slice(-8,-4));basis="TTM"}
-  else if(a.length>=2){now=a[a.length-1];ago=a[a.length-2];basis="FY"}
-  const m={basis,price1y:r.ago?(r.last/r.ago-1)*100:null,dma:r.dma?(r.last/r.dma-1)*100:null,last:r.last,conv:!!r.conv};
-  m.loss=now!=null&&now<=0;
-  m.pe=now>0?r.last/now:null;m.eps=now;m.bad=m.pe!=null&&m.pe>150;
-  m.epsG=now!=null&&ago>0?(now/ago-1)*100:null;
-  m.peAgo=ago>0&&r.ago?r.ago/ago:null;
-  m.peChg=m.pe!=null&&m.peAgo!=null?(m.pe/m.peAgo-1)*100:null;
-  m.label=m.loss?"Loss-making":m.epsG==null?"No earnings data":m.epsG<0&&m.peChg>0?"High risk / Overvalued":m.epsG<0?"Earnings falling":m.epsG>=15?"High growth":"Fair / Stagnant";
-  return m;
+ if(!r||r.last==null)return{basis:"",price1y:null,dma:null,pe:null,epsG:null,peChg:null,label:"No data"};
+ const qd=(r.q||[]),q=qd.map(x=>x[1]),a=(r.a||[]).map(x=>x[1]);
+ const contig=qd.length>=8&&qd.slice(-8).every((x,i,z)=>i===0||(new Date(x[0])-new Date(z[i-1][0]))/864e5<110);
+ let now=null,ago=null,basis="";
+ if(contig){now=sum(q.slice(-4));ago=sum(q.slice(-8,-4));basis="TTM"}
+ else if(a.length>=2){now=a[a.length-1];ago=a[a.length-2];basis="FY"}
+ const m={basis,price1y:r.ago?(r.last/r.ago-1)*100:null,dma:r.dma?(r.last/r.dma-1)*100:null,last:r.last,conv:!!r.conv};
+ m.loss=now!=null&&now<=0;
+ m.pe=now>0?r.last/now:null;m.eps=now;m.bad=m.pe!=null&&m.pe>150;
+ m.epsG=now!=null&&ago>0?(now/ago-1)*100:null;
+ m.peAgo=ago>0&&r.ago?r.ago/ago:null;
+ m.peChg=m.pe!=null&&m.peAgo!=null?(m.pe/m.peAgo-1)*100:null;
+ m.label=m.loss?"Loss-making":m.epsG==null?"No earnings data":m.epsG<0&&m.peChg>0?"High risk / Overvalued":m.epsG<0?"Earnings falling":m.epsG>=15?"High growth":"Fair / Stagnant";
+ return m;
 }
 async function analyse(){
-  if(!W){hmsg="Paste your Worker address first.";return show()}
-  const raw={},eq=[...new Set(H.filter(h=>h.type==="stock"||h.type==="mf").map(h=>h.sym))].filter(Boolean);
-  for(let i=0;i<eq.length;i+=15){
-   hmsg=`Analysing ${Math.min(i+15,eq.length)} of ${eq.length}…`;show();
-   try{
-    const r=await fetch(W+(W.includes("?")?"&":"?")+"s="+encodeURIComponent(eq.slice(i,i+15).join(",")));
-    if(!r.ok)throw new Error("HTTP "+r.status);
-    Object.assign(raw,await r.json());
-   }catch(e){hmsg="Worker error: "+e.message;return show()}
-  }
-  A={at:new Date().toISOString().slice(0,16).replace("T"," ")};
-  for(const s of eq)A[s]=metrics(raw[s]);
-  lsSet("mm_analysis",A);hmsg="Analysis done.";show();
-}
-
-const assetTypeLabel = t => ({
-  stock: "Stock",
-  mf: "Mutual Fund",
-  gold: "Gold",
-  ppf: "PPF",
-  realestate: "Real Estate"
-}[t] || "Asset");
-
-function getAssetValue(asset) {
-  if (!asset) return 0;
-  switch (asset.type) {
-    case "stock":
-    case "mf":
-      return (Number(asset.qty) || 0) * (Number(asset.ltp) || 0);
-    case "gold":
-      return (Number(asset.qty) || 0) * (Number(asset.ltp) || 0);
-    case "ppf":
-      return Number(asset.balance) || 0;
-    case "realestate":
-      return Number(asset.currentValue) || 0;
-    default:
-      return 0;
-  }
-}
-function getAssetGain(asset) {
-  if (!asset) return 0;
-  switch (asset.type) {
-    case "stock":
-    case "mf":
-    case "gold":
-      return ((Number(asset.ltp) || 0) - (Number(asset.avg) || 0)) * (Number(asset.qty) || 0);
-    default:
-      return 0;
-  }
-}
-function getAssetSummaryRows() {
-  const rows = (H || []).filter(x => x && x.type);
-  const grouped = {};
-  for (const a of rows) {
-    const t = a.type;
-    if (!grouped[t]) grouped[t] = { type: t, value: 0, gain: 0, items: [] };
-    grouped[t].value += getAssetValue(a);
-    grouped[t].gain += getAssetGain(a);
-    grouped[t].items.push(a);
-  }
-  return Object.values(grouped);
-}
-function parseIBKRHoldings(rows){
-  const norm=s=>String(s??"").toLowerCase().replace(/[^a-z]/g,"");
-  const headerRow = rows.find(r => r.some(c => ["symbol","ticker","cusip"].includes(norm(c))));
-  if (!headerRow) throw new Error("No IBKR header row found (expected Symbol/Ticker column)");
-  const h = headerRow.map(norm);
-  const col=(...n)=>{for(const k of n){const i=h.findIndex(x=>x.startsWith(k)||x.includes(k));if(i>=0)return i}return -1};
-  const cS = col("symbol","ticker","cusip");
-  const cQ = col("quantity","qty","shares");
-  const cP = col("closeprice","price","lastprice","ltp");
-  const cV = col("value","marketvalue","marketval");
-  if (cS < 0 || cQ < 0) throw new Error("IBKR CSV missing Symbol or Qty columns");
-  
-  const out = [];
-  const startIdx = rows.indexOf(headerRow) + 1;
-  for (const r of rows.slice(startIdx)) {
-    const raw = String(r[cS] ?? "").trim();
-    const qty = num(r[cQ]);
-    const price = cP >= 0 ? num(r[cP]) : null;
-    const value = cV >= 0 ? num(r[cV]) : null;
-    if (!raw || qty === null || qty <= 0) continue;
-    if (/^(total|cash|sum)/i.test(raw)) continue;
-    let ltp = price;
-    if (!ltp && value && qty) ltp = value / qty;
-    if (!ltp) continue;
-    const isMFHolding = isMF(raw);
-    out.push({
-      sym: normSym(raw),
-      qty,
-      avg: ltp,
-      ltp,
-      type: isMFHolding ? "mf" : "stock",
-      source: "ibkr"
-    });
-  }
-  if (!out.length) throw new Error("No valid IBKR holdings found");
-  return out;
-}
-function addManualAsset() {
-  const type = document.getElementById("manualAssetType").value;
-  let asset = null;
-  if (type === "gold") {
-    const name = document.getElementById("goldName").value.trim() || "Physical Gold";
-    const grams = Number(document.getElementById("goldQty").value);
-    const avg = Number(document.getElementById("goldAvg").value);
-    const ltp = Number(document.getElementById("goldLtp").value);
-    if (!grams || !avg || !ltp) {
-      hmsg = "Please fill all gold fields.";
-      show(); return;
-    }
-    asset = { id: Date.now(), type: "gold", name, qty: grams, avg, ltp, owner: ownerName(), source: "manual" };
-  }
-  if (type === "ppf") {
-    const account = document.getElementById("ppfAccount").value.trim() || "PPF";
-    const balance = Number(document.getElementById("ppfBalance").value);
-    const rate = Number(document.getElementById("ppfRate").value);
-    const date = document.getElementById("ppfDate").value;
-    if (!balance || !rate || !date) {
-      hmsg = "Please fill all PPF fields.";
-      show(); return;
-    }
-    asset = { id: Date.now(), type: "ppf", name: account, balance, rate, maturityDate: date, owner: ownerName(), source: "manual" };
-  }
-  if (type === "realestate") {
-    const name = document.getElementById("realestateName").value.trim();
-    const value = Number(document.getElementById("realestateValue").value);
-    if (!name || !value) {
-      hmsg = "Please fill all real estate fields.";
-      show(); return;
-    }
-    asset = { id: Date.now(), type: "realestate", name, currentValue: value, owner: ownerName(), source: "manual" };
-  }
-  if (!asset) return;
-  H.push(asset);
-  lsSet("mm_holdings2", normalizeLegacyHoldings(H));
-  hmsg = "Asset added successfully.";
-  show();
-}
-let editingAssetId = null;
-function deleteAssetById(id) {
-  H = H.filter(x => x.id !== id);
-  if (editingAssetId === id) editingAssetId = null;
-  lsSet("mm_holdings2", normalizeLegacyHoldings(H));
-  hmsg = "Asset deleted.";
-  show();
-}
-function openEditAsset(id) {
-  const asset = H.find(x => x.id === id);
-  if (!asset) return;
-  editingAssetId = id;
-  
-  if (asset.type === "stock" || asset.type === "mf") {
-    document.getElementById("manualAssetType").value = "gold";
-    document.getElementById("goldName").value = asset.name || "";
-    document.getElementById("goldQty").value = asset.qty || "";
-    document.getElementById("goldAvg").value = asset.avg || "";
-    document.getElementById("goldLtp").value = asset.ltp || "";
-    showFormForManualAsset("gold");
-  } else if (asset.type === "gold") {
-    document.getElementById("manualAssetType").value = "gold";
-    document.getElementById("goldName").value = asset.name || "";
-    document.getElementById("goldQty").value = asset.qty || "";
-    document.getElementById("goldAvg").value = asset.avg || "";
-    document.getElementById("goldLtp").value = asset.ltp || "";
-    showFormForManualAsset("gold");
-  } else if (asset.type === "ppf") {
-    document.getElementById("manualAssetType").value = "ppf";
-    document.getElementById("ppfAccount").value = asset.name || "";
-    document.getElementById("ppfBalance").value = asset.balance || "";
-    document.getElementById("ppfRate").value = asset.rate || "";
-    document.getElementById("ppfDate").value = asset.maturityDate || "";
-    showFormForManualAsset("ppf");
-  } else if (asset.type === "realestate") {
-    document.getElementById("manualAssetType").value = "realestate";
-    document.getElementById("realestateName").value = asset.name || "";
-    document.getElementById("realestateValue").value = asset.currentValue || "";
-    showFormForManualAsset("realestate");
-  }
-  const saveBtn = document.getElementById("addManualAssetBtn");
-  if (saveBtn) saveBtn.textContent = "Save edits";
-  hmsg = "Editing asset. Update and click Save edits.";
-  show();
-}
-function saveEditedAsset() {
-  if (!editingAssetId) return;
-  const asset = H.find(x => x.id === editingAssetId);
-  if (!asset) return;
-  const type = asset.type;
-  if (type === "stock" || type === "mf" || type === "gold") {
-    asset.name = document.getElementById("goldName").value.trim() || "Physical Gold";
-    asset.qty = Number(document.getElementById("goldQty").value);
-    asset.avg = Number(document.getElementById("goldAvg").value);
-    asset.ltp = Number(document.getElementById("goldLtp").value);
-    if (type === "stock" || type === "mf") {
-      asset.type = "stock";
-    }
-  } else if (type === "ppf") {
-    asset.name = document.getElementById("ppfAccount").value.trim() || "PPF";
-    asset.balance = Number(document.getElementById("ppfBalance").value);
-    asset.rate = Number(document.getElementById("ppfRate").value);
-    asset.maturityDate = document.getElementById("ppfDate").value;
-  } else if (type === "realestate") {
-    asset.name = document.getElementById("realestateName").value.trim();
-    asset.currentValue = Number(document.getElementById("realestateValue").value);
-  }
-  lsSet("mm_holdings2", normalizeLegacyHoldings(H));
-  editingAssetId = null;
-  hmsg = "Asset updated.";
-  show();
-}
-function exportHoldingsCSV() {
-  const rows = H.filter(x => x && x.type);
-  if (!rows.length) {
-    hmsg = "No assets to export.";
-    show(); return;
-  }
-  const headers = ["type","name","qty","avg","ltp","balance","rate","maturityDate","currentValue","owner"];
-  const csv = [headers.join(",")];
-  for (const a of rows) {
-    const vals = headers.map(h => {
-      const v = a[h];
-      const s = String(v ?? "").replace(/"/g, '""');
-      return `"${s}"`;
-    });
-    csv.push(vals.join(","));
-  }
-  const blob = new Blob([csv.join("\n")], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "holdings.csv";
-  a.click();
-  URL.revokeObjectURL(url);
-  hmsg = "Holdings exported to CSV.";
-  show();
-}
-async function importIBKRFile(file){
+ if(!W){hmsg="Paste your Worker address first.";return show()}
+ const raw={},eq=[...new Set(H.map(h=>h.sym))].filter(s=>!isGold(s)&&!isMF(s));
+ for(let i=0;i<eq.length;i+=15){
+  hmsg=`Analysing ${Math.min(i+15,eq.length)} of ${eq.length}…`;show();
   try{
-    const text = await file.text();
-    const rows = csvRows(text);
-    const res = parseIBKRHoldings(rows);
-    const owner = ownerName();
-    const finalList = res.map(x => ({
-      ...x,
-      owner,
-      type: x.type || (isMF(x.sym || x.name || "") ? "mf" : "stock")
-    }));
-    const existing = H.filter(h => !finalList.some(x => x.sym === h.sym && (h.type === "stock" || h.type === "mf")));
-    H = existing.concat(finalList);
-    lsSet("mm_holdings2", normalizeLegacyHoldings(H));
-    hmsg = `Imported ${res.length} IBKR holdings.`;
-    show();
-  }catch(e){
-    hmsg = "IBKR import failed: " + e.message;
-    show();
-  }
+   const r=await fetch(W+(W.includes("?")?"&":"?")+"s="+encodeURIComponent(eq.slice(i,i+15).join(",")));
+   if(!r.ok)throw new Error("HTTP "+r.status);
+   Object.assign(raw,await r.json());
+  }catch(e){hmsg="Worker error: "+e.message;return show()}
+ }
+ A={at:new Date().toISOString().slice(0,16).replace("T"," ")};
+ for(const s of eq)A[s]=metrics(raw[s]);
+ lsSet("mm_analysis",A);hmsg="Analysis done.";show();
 }
-function showFormForManualAsset(type){
-  const forms = ["goldFormManual","ppfFormManual","realestateFormManual"];
-  for (const id of forms) {
-    const el = document.getElementById(id);
-    if (el) el.style.display = (id === {
-      gold: "goldFormManual",
-      ppf: "ppfFormManual",
-      realestate: "realestateFormManual"
-    }[type]) ? "block" : "none";
-  }
+function renderAssetTable(rows,tv,title,assetType){
+ if(!rows.length)return"";
+ const isEq=assetType==="eq";
+ const header=`<tr><th>Symbol</th><th>Qty</th><th>Avg</th><th>LTP</th><th>Value</th><th>P&L</th><th>Weight</th>
+ ${isEq?`<th>PE</th><th>EPS gr.</th><th>PE chg</th><th>Price 1Y</th><th>vs 200d</th>`:""}<th>Label</th></tr>`;
+ const content=rows.map(r=>{const m=r.m,c=!m?"mu":/Attractive|growth/.test(m.label)?"up":/risk|falling|Loss/.test(m.label)?"dn":"wa";
+  const peCell=isEq?(m&&m.pe!=null?(m.bad?"n/a ⚠":m.pe.toFixed(1)):"—"):"";
+  const epsCell=isEq?(m&&m.epsG!=null?f(m.epsG)+(m.basis==="FY"?" FY":""):"—"):"";
+  const peChgCell=isEq?(m&&m.peChg!=null?f(m.peChg):"—"):"";
+  const p1yCell=isEq?(m&&m.price1y!=null?f(m.price1y):"—"):"";
+  const dmaCell=isEq?(m&&m.dma!=null?f(m.dma):"—"):"";
+  return `<tr><td><b>${r.sym}</b></td><td>${r.qty}</td><td>${inr(r.inv/r.qty)}</td><td>${inr(r.ltp)}</td><td>${inr(r.val)}</td><td class="${cl(r.val-r.inv)}">${inr(r.val-r.inv)}</td><td>${(r.val/tv*100).toFixed(1)}%</td>
+  ${isEq?`<td>${peCell}</td><td class="${cl(m&&m.epsG)}">${epsCell}</td><td class="${cl(m&&m.peChg)}">${peChgCell}</td><td class="${cl(m&&m.price1y)}">${p1yCell}</td><td class="${cl(m&&m.dma)}">${dmaCell}</td>`:""}<td class="${c}">${m?m.label:"—"}</td></tr>`;}).join("");
+ const isOpen=!collapsedSections[assetType];
+ return `<div class="table-section"><div class="collapsible-header ${isOpen?"open":""}" data-section="${assetType}">
+ <span class="toggle">▶</span><span>${title} (${rows.length})</span></div>
+ <div class="collapsible-content"><div class="wrap"><table>${header}${content}</table></div></div></div>`;
 }
 function holdings(){
-  let h=`<div class="card"><b>Import holdings</b>
-  <p class="s">Zerodha Console: Portfolio → Holdings → download. Supports equity, mutual funds, and ETFs. You can import JSON, CSV, or XLSX files, or paste the table.</p>
-  <input type="text" id="hown" placeholder="Owner name (e.g. Me, Wife, Father)" value="${who!=="All"?who:""}">
-  <label class="btn">Choose file<input type="file" id="hf" accept=".xlsx,.xls,.csv,.json" hidden></label>
-  <p class="s" style="margin-top:12px">Or import from IBKR CSV:</p>
-  <label class="btn">IBKR CSV<input type="file" id="ibkrFile" accept=".csv" hidden></label>
-  <p class="s" style="margin-top:12px">Or paste a holdings table here:</p>
-  <textarea id="hpaste" rows="3" placeholder="Paste CSV / Zerodha table here"></textarea>
-  <button id="hpb">Import pasted table</button>
-  <div class="mu" style="font-size:13px;margin-top:8px">${hmsg}</div></div>`;
-
-  h += `<div class="card"><b>Manual assets</b>
-    <p class="s">Add physical gold, PPF, or real estate manually.</p>
-    <select id="manualAssetType" style="width:100%;padding:8px;border:1px solid var(--bd);border-radius:8px;background:var(--bg);color:var(--tx);font:inherit;">
-      <option value="gold">Physical Gold</option>
-      <option value="ppf">PPF</option>
-      <option value="realestate">Real Estate</option>
-    </select>
-
-    <div id="goldFormManual" style="">
-      <input id="goldName" type="text" placeholder="Gold description">
-      <input id="goldQty" type="number" step="0.01" placeholder="Grams">
-      <input id="goldAvg" type="number" step="0.01" placeholder="Avg cost per gram">
-      <input id="goldLtp" type="number" step="0.01" placeholder="Current rate per gram">
-    </div>
-
-    <div id="ppfFormManual" style="display:none;">
-      <input id="ppfAccount" type="text" placeholder="PPF account name">
-      <input id="ppfBalance" type="number" placeholder="Current balance">
-      <input id="ppfRate" type="number" step="0.01" placeholder="Annual rate %">
-      <input id="ppfDate" type="date" placeholder="Maturity date">
-    </div>
-
-    <div id="realestateFormManual" style="display:none;">
-      <input id="realestateName" type="text" placeholder="Property name">
-      <input id="realestateValue" type="number" placeholder="Current value">
-    </div>
-
-    <button id="addManualAssetBtn" style="margin-top:12px;">${editingAssetId ? "Save edits" : "Add asset"}</button>
-  </div>`;
-
-  h += `<div class="card"><b>Holdings actions</b><button id="exportCsvBtn">Export CSV</button></div>`;
-
-  h+=`<div class="card"><b>Worker address</b><p class="s">Needed for PE and EPS growth. Your Cloudflare Worker's web address.</p>
-  <input type="text" id="hw" placeholder="https://something.workers.dev" value="${W}"><button id="hws">Save</button></div>`;
-
-  if(!H.length){
-    h += `<div class="card"><b>Holdings</b><div class="mu">No assets added yet.</div></div>`;
-    return h;
-  }
-
-  const os=owners();
-  h+=`<div class="card"><b>Whose holdings</b><div>${["All",...os].map(o=>`<button class="hwho" data-o="${o}" style="${o===who?"background:var(--tx);color:var(--bg)":""}">${o}</button>`).join("")}</div>
-  <div style="margin-top:6px">${who!=="All"?`<button id="hrm">Remove ${who}</button>`:""}<button id="hclear">Clear everything</button></div></div>`;
-
-  const assetRows = getAssetSummaryRows();
-  const totalValue = assetRows.reduce((s, r) => s + r.value, 0);
-  const totalGain = assetRows.reduce((s, r) => s + r.gain, 0);
-
-  h += `<div class="card"><b>Asset allocation</b><div class="grid">`;
-  for (const r of assetRows) {
-    const pct = totalValue ? ((r.value / totalValue) * 100) : 0;
-    const gainColor = r.gain >= 0 ? "up" : "dn";
-    h += `
-      <div class="m">
-        <small>${assetTypeLabel(r.type)}</small>
-        <b class="${gainColor}">₹${r.value.toLocaleString("en-IN")}</b>
-        <div class="leg">${pct.toFixed(1)}% · ${r.gain >= 0 ? "+" : ""}₹${Math.abs(r.gain).toLocaleString("en-IN")}</div>
-      </div>`;
-  }
-  h += `</div></div>`;
-
-  h += `<div class="card"><b>Portfolio${who!=="All"?" · "+who:os.length>1?" · all":""}</b><div class="grid">
-  <div class="m"><small>Total Value</small><b>₹${totalValue.toLocaleString("en-IN")}</b></div>
-  <div class="m"><small>Total Gain/Loss</small><b class="${totalGain >= 0 ? "up" : "dn"}">${totalGain >= 0 ? "+" : ""}₹${Math.abs(totalGain).toLocaleString("en-IN")}</b></div>
-  <div class="m"><small>Assets</small><b>${H.filter(x => who === "All" || x.owner === who).length}</b></div></div></div>`;
-
-  h += `<div class="card"><div class="wrap"><table><tr>
-    <th>Asset</th><th>Type</th><th>Qty/Balance</th><th>Avg/Rate</th><th>Current</th><th>Value</th><th>Gain/Loss</th><th>Actions</th>
-  </tr>`;
-
-  const filtered = H.filter(x => who === "All" || x.owner === who);
-  for (const a of filtered) {
-    const value = getAssetValue(a);
-    const gain = getAssetGain(a);
-    const gainColor = gain >= 0 ? "up" : "dn";
-
-    let qtyCell = "", avgCell = "", currentCell = "";
-    if (a.type === "stock" || a.type === "mf") {
-      qtyCell = a.qty;
-      avgCell = `₹${Number(a.avg).toLocaleString("en-IN")}`;
-      currentCell = `₹${Number(a.ltp).toLocaleString("en-IN")}`;
-    } else if (a.type === "gold") {
-      qtyCell = `${a.qty}g`;
-      avgCell = `₹${Number(a.avg).toLocaleString("en-IN")}/g`;
-      currentCell = `₹${Number(a.ltp).toLocaleString("en-IN")}/g`;
-    } else if (a.type === "ppf") {
-      qtyCell = `₹${Number(a.balance).toLocaleString("en-IN")}`;
-      avgCell = `${a.rate}% p.a.`;
-      currentCell = a.maturityDate;
-    } else if (a.type === "realestate") {
-      qtyCell = "1";
-      avgCell = "—";
-      currentCell = `₹${Number(a.currentValue).toLocaleString("en-IN")}`;
-    }
-
-    h += `<tr>
-      <td><b>${a.name}</b></td>
-      <td><span class="tag">${assetTypeLabel(a.type)}</span></td>
-      <td>${qtyCell}</td>
-      <td>${avgCell}</td>
-      <td>${currentCell}</td>
-      <td>₹${value.toLocaleString("en-IN")}</td>
-      <td class="${gainColor}">${gain >= 0 ? "+" : ""}₹${Math.abs(gain).toLocaleString("en-IN")}</td>
-      <td><button class="editAssetBtn" data-id="${a.id}">Edit</button><button class="deleteAssetBtn" data-id="${a.id}">Delete</button></td>
-    </tr>`;
-  }
-
-  h += `</table></div></div>`;
-  return h;
-}
-function bindAssetActions(){
-  document.querySelectorAll(".deleteAssetBtn").forEach(btn => {
-    btn.onclick = () => deleteAssetById(Number(btn.dataset.id));
-  });
-  document.querySelectorAll(".editAssetBtn").forEach(btn => {
-    btn.onclick = () => openEditAsset(Number(btn.dataset.id));
-  });
-  const exportBtn = document.getElementById("exportCsvBtn");
-  if (exportBtn) exportBtn.onclick = exportHoldingsCSV;
-}
-function bindManualAssets(){
-  const type = document.getElementById("manualAssetType");
-  if (!type) return;
-  const showForm = typeValue => {
-    const map = { gold:"goldFormManual", ppf:"ppfFormManual", realestate:"realestateFormManual" };
-    for (const id of ["goldFormManual","ppfFormManual","realestateFormManual"]) {
-      const el = document.getElementById(id);
-      if (el) el.style.display = (id === map[typeValue]) ? "block" : "none";
-    }
-  };
-  type.onchange = () => showForm(type.value);
-
-  const addBtn = document.getElementById("addManualAssetBtn");
-  if (addBtn) {
-    addBtn.onclick = () => {
-      if (editingAssetId) saveEditedAsset();
-      else addManualAsset();
-    };
-  }
-
-  const ibkrFile = document.getElementById("ibkrFile");
-  if (ibkrFile) {
-    ibkrFile.onchange = e => {
-      if (e.target.files[0]) importIBKRFile(e.target.files[0]);
-    };
-  }
+ let h=`<div class="card"><b>Import holdings</b>
+ <p class="s">Zerodha Console: Portfolio → Holdings → download. Supports equity, mutual funds, and ETFs. You can import JSON, CSV, or XLSX files, or paste the table.</p>
+ <input type="text" id="hown" placeholder="Owner name (e.g. Me, Wife, Father)" value="${who!=="All"?who:""}">
+ <label class="btn">Choose file<input type="file" id="hf" accept=".xlsx,.xls,.csv,.json" hidden></label>
+ <p class="s" style="margin-top:12px">Or paste a holdings table here:</p>
+ <textarea id="hpaste" rows="3" placeholder="Paste CSV / Zerodha table here"></textarea>
+ <button id="hpb">Import pasted table</button>
+ <div class="mu" style="font-size:13px;margin-top:8px">${hmsg}</div></div>`;
+ h+=`<div class="card"><b>Worker address</b><p class="s">Needed for PE and EPS growth. Your Cloudflare Worker's web address.</p>
+ <input type="text" id="hw" placeholder="https://something.workers.dev" value="${W}"><button id="hws">Save</button></div>`;
+ if(!H.length)return h;
+ const os=owners();
+ h+=`<div class="card"><b>Whose holdings</b><div>${["All",...os].map(o=>`<button class="hwho" data-o="${o}" style="${o===who?"background:var(--tx);color:var(--bg)":""}">${o}</button>`).join("")}</div>
+ <div style="margin-top:6px">${who!=="All"?`<button id="hrm">Remove ${who}</button>`:""}<button id="hclear">Clear everything</button></div></div>`;
+ const by={};
+ for(const x of H.filter(x=>who==="All"||x.owner===who)){
+  const r=by[x.sym]||(by[x.sym]={sym:x.sym,qty:0,inv:0,val:0,ltp:x.ltp,isMF:x.isMutualFund});
+  r.qty+=x.qty;r.inv+=x.qty*x.avg;r.val+=x.qty*x.ltp;r.ltp=x.ltp;
+ }
+ const rows=Object.values(by).map(r=>({...r,m:A[r.sym]||null})).sort((a,b)=>b.val-a.val);
+ const tv=sum(rows.map(r=>r.val)),ti=sum(rows.map(r=>r.inv)),pl=tv-ti;
+ const gold=rows.filter(r=>isGold(r.sym)),gv=sum(gold.map(r=>r.val));
+ const mfs=rows.filter(r=>r.isMF),mfv=sum(mfs.map(r=>r.val));
+ const equities=rows.filter(r=>!isGold(r.sym)&&!r.isMF),eqv=sum(equities.map(r=>r.val));
+ const got=rows.filter(r=>r.m&&!isGold(r.sym)&&!r.isMF),peRows=got.filter(r=>r.m.pe>0&&!r.m.bad);
+ const cov=eqv?sum(peRows.map(r=>r.val))/eqv*100:0;
+ const pPE=peRows.length?sum(peRows.map(r=>r.val))/sum(peRows.map(r=>r.val/r.m.pe)):null;
+ const share=f=>eqv?sum(got.filter(f).map(r=>r.val))/eqv*100:0;
+ const top5=tv?sum(rows.slice(0,5).map(r=>r.val))/tv*100:0;
+ h+=`<div class="card"><b>Portfolio${who!=="All"?" · "+who:os.length>1?" · all":""}</b><div class="grid">
+ <div class="m"><small>Invested</small><b>${inr(ti)}</b></div><div class="m"><small>Value</small><b>${inr(tv)}</b></div>
+ <div class="m"><small>P&L</small><b class="${cl(pl)}">${inr(pl)} (${f(ti?pl/ti*100:null)})</b></div>
+ <div class="m"><small>Holdings</small><b>${rows.length}</b></div><div class="m"><small>Top 5 weight</small><b>${top5.toFixed(0)}%</b></div>
+ <div class="m"><small>Gold &amp; silver</small><b>${tv?(gv/tv*100).toFixed(0):0}%</b></div>
+ <div class="m"><small>Mutual funds</small><b>${tv?(mfv/tv*100).toFixed(0):0}%</b></div>
+ <div class="m"><small>Equities</small><b>${tv?(eqv/tv*100).toFixed(0):0}%</b></div></div>`;
+ if(got.length)h+=`<div class="grid"><div class="m"><small>Equity PE</small><b>${pPE==null?"—":pPE.toFixed(1)}</b></div>
+ <div class="m"><small>PE coverage</small><b>${cov.toFixed(0)}%</b></div>
+ <div class="m"><small>High growth</small><b class="up">${share(r=>r.m.label==="High growth").toFixed(0)}%</b></div>
+ <div class="m"><small>Earnings falling</small><b class="dn">${share(r=>/falling|risk/.test(r.m.label)).toFixed(0)}%</b></div>
+ <div class="m"><small>Below 200-day</small><b>${share(r=>r.m.dma<0).toFixed(0)}%</b></div></div>
+ <div class="leg">Equity figures cover the non-gold/silver part only. Equity PE = value-weighted (total value ÷ total earnings) over holdings with positive earnings. Analysis from ${A.at}. Missing data is shown as "—".</div>`;
+ h+=`<button id="han">${Object.keys(A).length>1?"Refresh analysis":"Analyse PE and EPS growth"}</button></div>`;
+ h+=`<div class="card"><b>View by Asset Class</b>
+ <div class="asset-filters">
+ <button class="filter-btn active" data-asset="eq">Equities</button>
+ <button class="filter-btn active" data-asset="mf">Mutual Funds</button>
+ <button class="filter-btn active" data-asset="gold">Gold & Silver</button>
+ </div>`;
+ if(assetClassFilter.eq && equities.length)h+=renderAssetTable(equities,tv,"Equities","eq");
+ if(assetClassFilter.mf && mfs.length)h+=renderAssetTable(mfs,tv,"Mutual Funds","mf");
+ if(assetClassFilter.gold && gold.length)h+=renderAssetTable(gold,tv,"Gold & Silver","gold");
+ h+=`<div class="leg">Click asset class buttons to show/hide sections. Click headers to expand/collapse tables.</div></div>`;
+ return h;
 }
 function bindHoldings(){
-  const $=id=>document.getElementById(id);
-  $("hf").onchange=e=>e.target.files[0]&&importFile(e.target.files[0]);
-  $("hpb").onclick=importPaste;
-  $("hws").onclick=()=>{W=$("hw").value.trim().replace(/\/+$/,"" );lsSet("mm_worker",W);hmsg="Saved.";show();};
-  if($("han"))$("han").onclick=analyse;
-  if($("hclear"))$("hclear").onclick=()=>{H=[];A={};who="All";lsSet("mm_holdings2",H);lsSet("mm_analysis",A);hmsg="Cleared.";show();};
-  if($("hrm"))$("hrm").onclick=()=>{H=H.filter(h=>h.owner!==who);who="All";lsSet("mm_holdings2",normalizeLegacyHoldings(H));hmsg="Removed.";show();};
-  document.querySelectorAll(".hwho").forEach(b=>b.onclick=()=>{who=b.dataset.o;show()});
+ const $=id=>document.getElementById(id);
+ $("hf").onchange=e=>e.target.files[0]&&importFile(e.target.files[0]);
+ $("hpb").onclick=importPaste;
+ $("hws").onclick=()=>{W=$("hw").value.trim().replace(/\/+$/,"" );lsSet("mm_worker",W);hmsg="Saved.";show();};
+ if($("han"))$("han").onclick=analyse;
+ if($("hclear"))$("hclear").onclick=()=>{H=[];A={};who="All";lsSet("mm_holdings2",H);lsSet("mm_analysis",A);hmsg="Cleared.";show();};
+ if($("hrm"))$("hrm").onclick=()=>{H=H.filter(h=>h.owner!==who);who="All";lsSet("mm_holdings2",H);hmsg="Removed.";show();};
+ document.querySelectorAll(".hwho").forEach(b=>b.onclick=()=>{who=b.dataset.o;show()});
+ document.querySelectorAll(".filter-btn").forEach(b=>b.onclick=e=>{
+  const asset=e.target.dataset.asset;
+  assetClassFilter[asset]=!assetClassFilter[asset];
+  e.target.classList.toggle("active");
+  lsSet("mm_assetFilter",assetClassFilter);
+  show();
+ });
+ document.querySelectorAll(".collapsible-header").forEach(h=>h.onclick=()=>{
+  const section=h.dataset.section;
+  collapsedSections[section]=!collapsedSections[section];
+  h.classList.toggle("open");
+  lsSet("mm_collapsedSections",collapsedSections);
+ });
 }
 function show(){
-  const t=(location.hash.slice(1)||"home").toLowerCase();
-  document.getElementById("nav").innerHTML=TABS.map(n=>`<a href="#${n.toLowerCase()}" class="${n.toLowerCase()===t?"on":""}">${n}</a>`).join("");
-  document.getElementById("v").innerHTML={home,etfs,macro,india,holdings}[t]?.()||home();
-  if(t==="holdings"){
-    bindHoldings();
-    bindManualAssets();
-    bindAssetActions();
-  }
+ const t=(location.hash.slice(1)||"home").toLowerCase();
+ document.getElementById("nav").innerHTML=TABS.map(n=>`<a href="#${n.toLowerCase()}" class="${n.toLowerCase()===t?"on":""}">${n}</a>`).join("");
+ document.getElementById("v").innerHTML={home,etfs,macro,india,holdings}[t]?.()||home();
+ if(t==="holdings")bindHoldings();
 }
 const lsData={get:ls.get, set:lsSet};
-H = normalizeLegacyHoldings(lsData.get("mm_holdings2") || []);
-W = lsData.get("mm_worker") || "";
-A = lsData.get("mm_analysis") || {};
+H=lsData.get("mm_holdings2")||[];W=lsData.get("mm_worker")||"";A=lsData.get("mm_analysis")||{};
+assetClassFilter=lsData.get("mm_assetFilter")||{eq:true,mf:true,gold:true};
+collapsedSections=lsData.get("mm_collapsedSections")||{};
 Promise.all([get("markets.json"),get("data.json")]).then(([m,i])=>{
-  M=m||{errors:["markets.json not found yet. Run the Update markets workflow."]};I=i||{};
-  document.getElementById("upd").textContent=M.updated?"Markets updated "+M.updated.replace("T"," ").replace("+00:00","")+" UTC":"";
-  show();
+ M=m||{errors:["markets.json not found yet. Run the Update markets workflow."]};I=i||{};
+ document.getElementById("upd").textContent=M.updated?"Markets updated "+M.updated.replace("T"," ").replace("+00:00","")+" UTC":"";
+ show();
 });
 addEventListener("hashchange",show);
 </script></body></html>
