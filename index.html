@@ -40,7 +40,9 @@ textarea{width:100%;padding:8px;border:1px solid var(--bd);border-radius:8px;bac
 .asset-filters button{padding:6px 12px;font-size:12px;border-radius:6px;border:1px solid var(--bd);background:var(--card);color:var(--tx);cursor:pointer;font-weight:600;transition:all 0.2s}
 .asset-filters button.active{background:var(--tx);color:var(--bg)}
 .table-section{margin-bottom:12px}
-</style></head><body>
+</style>
+<link rel="stylesheet" href="theme.css">
+</head><body>
 <h1>Market Monitor</h1><p class="s" id="upd"></p>
 <nav id="nav"></nav>
 <div id="v"></div>
@@ -395,4 +397,4 @@ Promise.all([get("markets.json"),get("data.json")]).then(([m,i])=>{
  show();
 });
 addEventListener("hashchange",show);
-</script>   <script src="portfolio.js"></script></body></html>
+</script>   <script src="portfolio.js"></script><script src="portfolio.js"></script></body></html>
