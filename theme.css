@@ -1,0 +1,34 @@
+/* theme.css: readability tweaks, loaded after the inline <style> in index.html */
+:root{--mut:#5f5f5a}
+@media (prefers-color-scheme:dark){:root{--mut:#a8a8a0}}
+body{font-variant-numeric:tabular-nums}
+.s,.leg,.desc{font-size:13px}
+.m small{font-size:12px}
+:focus-visible{outline:2px solid var(--tx);outline-offset:2px}
+
+/* nav: scroll instead of cramping on narrow phones */
+nav{overflow-x:auto;scrollbar-width:none;border-bottom:1px solid var(--bd)}
+nav a{white-space:nowrap;min-width:76px}
+
+/* buttons: filled for main actions, red text for destructive ones */
+select{font:inherit}
+#han,#aadd,#hpb,#ipb,#hws,#fxs{background:var(--tx);color:var(--bg);border-color:var(--tx)}
+#hclear,#iclr,#hrm,.arm{color:var(--dn)}
+td button{padding:4px 10px;font-size:12px;margin:0 4px 0 0}
+
+/* owner chips */
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
+.chips button{margin:0;padding:4px 14px;border-radius:99px;font-size:13px}
+
+/* total card legend dots */
+.dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px}
+
+/* collapsible sections */
+details.mg{margin-bottom:12px}
+details.mg>summary,details.how>summary{cursor:pointer;font-weight:600}
+details.mg>summary{padding:12px 14px;border:1px solid var(--bd);border-radius:12px;background:var(--card);margin-bottom:12px}
+details.how{margin-top:8px}
+details.how>summary{font-size:13px;color:var(--mut);font-weight:500}
+
+/* tables: keep the first column visible while scrolling sideways */
+.wrap td:first-child,.wrap th:first-child{position:sticky;left:0;background:var(--card)}
