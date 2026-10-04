@@ -122,7 +122,7 @@ function parseHoldings(rows){
  const h=rows[hi].map(norm);
  const col=(...n)=>{for(const k of n){const i=h.findIndex(x=>x.startsWith(k));if(i>=0)return i}return -1};
  const cS=col("symbol","instrument","stock","company","scrip","name"),cQ=col("quantityavailable","qty","quantity"),
-  cA=col("averageprice","avgcost","avgprice","averagecost","avg"),cL=col("previousclosingprice","ltp","closeprice","prevclose","closing","currentprice","price");
+  cA=col("averageprice","buyavg","avgcost","avgprice","averagecost","avg"),cL=col("previousclosingprice","ltp","closeprice","prevclose","closing","currentprice","price");
  if(cQ<0||cA<0||cL<0)throw new Error("quantity, average price or closing price column not found (headers seen: "+rows[hi].join(" | ")+")");
  const out=[];
  for(const r of rows.slice(hi+1)){
@@ -157,9 +157,20 @@ async function importFile(file){
  }catch(e){hmsg="Import failed: "+e.message}
  show();
 }
+// Zerodha's web table copies each row over three lines: symbol, a lone quantity, then tab-separated numbers
+function fixPaste(t){
+ const lines=t.split(/\r?\n/).map(l=>l.replace(/\s+$/,"")).filter(l=>l.trim()),rows=[];let sym=null;
+ const isNum=s=>/^[\d,.\-+%₹\s]+$/.test(s);
+ rows.push(lines[0].split("\t").map(s=>s.trim()));
+ for(const l of lines.slice(1)){
+  if(l.includes("\t")){const f=l.split("\t").map(s=>s.trim());if(sym!=null){rows.push([sym,...f]);sym=null}else if(!isNum(f[0]))rows.push(f)}
+  else if(!isNum(l.trim()))sym=l.trim();
+ }
+ return rows;
+}
 function importPaste(){
  const owner=ownerName(),t=document.getElementById("hpaste").value;
- try{save(owner,parseHoldings(t.includes("\t")?t.split(/\r?\n/).map(l=>l.split("\t")):csvRows(t)))}
+ try{save(owner,parseHoldings(t.includes("\t")?fixPaste(t):csvRows(t)))}
  catch(e){hmsg="Paste failed: "+e.message}
  show();
 }
