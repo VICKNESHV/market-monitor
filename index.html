@@ -100,6 +100,7 @@ const lsSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
 const inr=x=>x==null?"—":"₹"+Math.round(x).toLocaleString("en-IN");
 const num=v=>{const n=parseFloat(String(v??"").replace(/[,₹\s]/g,""));return isNaN(n)?null:n};
 const isGold=s=>/GOLD|SILV|^SGB/i.test(s);
+const isMF=s=>/DIRECT|GROWTH|FUND|MF|PLAN/i.test(s);
 const sum=a=>a.reduce((s,x)=>s+x,0);
 const owners=()=>[...new Set(H.map(h=>h.owner))];
 const normSym=s=>String(s??"").trim().toUpperCase().replace(/-(BE|BZ|T0|X1|XT|Z|IL|SM)$/,"" );
@@ -134,8 +135,8 @@ function parseHoldings(rows){
  return out;
 }
 function parseJsonHoldings(data){
- let raw=[];
- if(Array.isArray(data)) raw=data;
+ let holdings=[];
+ if(Array.isArray(data)) holdings=data;
  else if(data && typeof data === "object") {
   const candidates=[
    data?.status === "success" ? data?.data?.result?.eq : null,
@@ -149,29 +150,31 @@ function parseJsonHoldings(data){
    data?.payload?.eq,
    data?.payload?.holdings
   ];
-  for(const candidate of candidates){ if(Array.isArray(candidate)){ raw=candidate; break; } }
+  for(const candidate of candidates){ if(Array.isArray(candidate)){ holdings=candidate; break; } }
  }
- if(!Array.isArray(raw)||!raw.length) throw new Error("JSON file does not contain a holdings array");
+ if(!Array.isArray(holdings)||!holdings.length) throw new Error("JSON file does not contain a holdings array");
  const out=[];
- for(const row of raw){
+ 
+ for(const row of holdings){
   const sym = row.tradingsymbol || row.symbol || row.instrument || row.stock || row.company || row.scrip || row.name;
   const qty = num(row.quantity_available ?? row.quantity ?? row.total_quantity ?? row.qty ?? row.quantity_long_term ?? row.quantity_t1);
   const avg = num(row.buy_average ?? row.average_price ?? row.avgprice ?? row.averagecost ?? row.avg ?? row.avg_price ?? row.buyAvg);
-  const ltp = num(row.ltp ?? row.close_price ?? row.current_price ?? row.price ?? row.last_price ?? row.closing_price ?? row.ltps);
-  if(!sym||qty==null||avg==null||ltp==null||qty<=0) continue;
+  const price = num(row.ltp ?? row.close_price ?? row.current_price ?? row.price ?? row.last_price ?? row.closing_price ?? row.ltps);
+  
+  if(!sym||qty==null||avg==null||price==null||qty<=0) continue;
+  
   out.push({
     sym:normSym(sym),
     qty:Number(qty),
     avg:Number(avg),
-    ltp:Number(ltp),
+    ltp:Number(price),
     sector:row.sector || "",
     cap:row.cap || "",
     weight:row.weight==null?null:Number(row.weight),
     unrealizedProfit:row.unrealized_profit==null?null:Number(row.unrealized_profit),
-    closingValue:row.closing_value==null?null:Number(row.closing_value),
-    isin:row.isin || "",
-    instrumentType:row.instrument_type || "",
-    holdingsDate:row.holdings_date || ""
+    isMutualFund:row.isin_breakdown && typeof row.isin_breakdown === "object" ? true : false,
+    mfHoldings:row.isin_breakdown || {},
+    instrumentType:row.instrument_type || ""
   });
  }
  if(!out.length) throw new Error("No valid holdings found in the JSON file");
@@ -241,7 +244,7 @@ function metrics(r){
 }
 async function analyse(){
  if(!W){hmsg="Paste your Worker address first.";return show()}
- const raw={},eq=[...new Set(H.map(h=>h.sym))].filter(s=>!isGold(s));
+ const raw={},eq=[...new Set(H.map(h=>h.sym))].filter(s=>!isGold(s)&&!isMF(s));
  for(let i=0;i<eq.length;i+=15){
   hmsg=`Analysing ${Math.min(i+15,eq.length)} of ${eq.length}…`;show();
   try{
@@ -256,7 +259,7 @@ async function analyse(){
 }
 function holdings(){
  let h=`<div class="card"><b>Import holdings</b>
- <p class="s">Zerodha Console: Portfolio → Holdings → download. You can also import a JSON export from a broker or a saved holdings file.</p>
+ <p class="s">Zerodha Console: Portfolio → Holdings → download. Supports equity, mutual funds, and ETFs. You can import JSON, CSV, or XLSX files, or paste the table.</p>
  <input type="text" id="hown" placeholder="Owner name (e.g. Me, Wife, Father)" value="${who!=="All"?who:""}">
  <label class="btn">Choose file<input type="file" id="hf" accept=".xlsx,.xls,.csv,.json" hidden></label>
  <p class="s" style="margin-top:12px">Or paste a holdings table here:</p>
@@ -271,38 +274,43 @@ function holdings(){
  <div style="margin-top:6px">${who!=="All"?`<button id="hrm">Remove ${who}</button>`:""}<button id="hclear">Clear everything</button></div></div>`;
  const by={};
  for(const x of H.filter(x=>who==="All"||x.owner===who)){
-  const r=by[x.sym]||(by[x.sym]={sym:x.sym,qty:0,inv:0,val:0,ltp:x.ltp});
-  r.qty+=x.qty;r.inv+=x.qty*x.avg;r.val+=x.qty*x.ltp;r.ltp=x.ltp;
+  const r=by[x.sym]||(by[x.sym]={sym:x.sym,qty:0,inv:0,ltp:x.ltp,isMF:x.isMutualFund,mfName:x.isMutualFund?x.sym:null});
+  r.qty+=x.qty;r.inv+=x.qty*x.avg;r.ltp=x.ltp;
  }
- const rows=Object.values(by).map(r=>({...r,m:A[r.sym]||null})).sort((a,b)=>b.val-a.val);
+ const rows=Object.values(by).map(r=>({...r,val:r.qty*r.ltp,m:A[r.sym]||null})).sort((a,b)=>b.val-a.val);
  const tv=sum(rows.map(r=>r.val)),ti=sum(rows.map(r=>r.inv)),pl=tv-ti;
  const gold=rows.filter(r=>isGold(r.sym)),gv=sum(gold.map(r=>r.val)),ev=tv-gv;
- const got=rows.filter(r=>r.m&&!isGold(r.sym)),peRows=got.filter(r=>r.m.pe>0&&!r.m.bad);
- const cov=ev?sum(peRows.map(r=>r.val))/ev*100:0;
+ const mfs=rows.filter(r=>r.isMF),mfv=sum(mfs.map(r=>r.val));
+ const equities=rows.filter(r=>!isGold(r.sym)&&!r.isMF),eqv=sum(equities.map(r=>r.val));
+ const got=rows.filter(r=>r.m&&!isGold(r.sym)&&!r.isMF),peRows=got.filter(r=>r.m.pe>0&&!r.m.bad);
+ const cov=eqv?sum(peRows.map(r=>r.val))/eqv*100:0;
  const pPE=peRows.length?sum(peRows.map(r=>r.val))/sum(peRows.map(r=>r.val/r.m.pe)):null;
- const share=f=>ev?sum(got.filter(f).map(r=>r.val))/ev*100:0;
+ const share=f=>eqv?sum(got.filter(f).map(r=>r.val))/eqv*100:0;
  const top5=tv?sum(rows.slice(0,5).map(r=>r.val))/tv*100:0;
  h+=`<div class="card"><b>Portfolio${who!=="All"?" · "+who:os.length>1?" · all":""}</b><div class="grid">
  <div class="m"><small>Invested</small><b>${inr(ti)}</b></div><div class="m"><small>Value</small><b>${inr(tv)}</b></div>
  <div class="m"><small>P&L</small><b class="${cl(pl)}">${inr(pl)} (${f(ti?pl/ti*100:null)})</b></div>
  <div class="m"><small>Holdings</small><b>${rows.length}</b></div><div class="m"><small>Top 5 weight</small><b>${top5.toFixed(0)}%</b></div>
- <div class="m"><small>Gold &amp; silver</small><b>${tv?(gv/tv*100).toFixed(0):0}%</b></div><div class="m"><small>Equity &amp; other</small><b>${tv?(ev/tv*100).toFixed(0):0}%</b></div></div>`;
+ <div class="m"><small>Gold &amp; silver</small><b>${tv?(gv/tv*100).toFixed(0):0}%</b></div>
+ <div class="m"><small>Mutual funds</small><b>${tv?(mfv/tv*100).toFixed(0):0}%</b></div>
+ <div class="m"><small>Equities</small><b>${tv?(eqv/tv*100).toFixed(0):0}%</b></div></div>`;
  if(got.length)h+=`<div class="grid"><div class="m"><small>Equity PE</small><b>${pPE==null?"—":pPE.toFixed(1)}</b></div>
  <div class="m"><small>PE coverage</small><b>${cov.toFixed(0)}%</b></div>
  <div class="m"><small>High growth</small><b class="up">${share(r=>r.m.label==="High growth").toFixed(0)}%</b></div>
  <div class="m"><small>Earnings falling</small><b class="dn">${share(r=>/falling|risk/.test(r.m.label)).toFixed(0)}%</b></div>
  <div class="m"><small>Below 200-day</small><b>${share(r=>r.m.dma<0).toFixed(0)}%</b></div></div>
- <div class="leg">Equity figures cover the non-gold/silver part only. Equity PE = value-weighted (total value ÷ total earnings) over holdings with positive earnings. Analysis from ${A.at}. Missing data is shown as “—”.</div>`;
+ <div class="leg">Equity figures cover the non-gold/silver part only. Equity PE = value-weighted (total value ÷ total earnings) over holdings with positive earnings. Analysis from ${A.at}. Missing data is shown as "—".</div>`;
  h+=`<button id="han">${Object.keys(A).length>1?"Refresh analysis":"Analyse PE and EPS growth"}</button></div>`;
- h+=`<div class="card"><div class="wrap"><table><tr><th>Stock</th><th>Qty</th><th>Avg</th><th>LTP</th><th>Value</th><th>P&L</th><th>Weight</th><th>PE</th><th>EPS gr.</th><th>PE chg</th><th>Price 1Y</th><th>vs 200d</th><th>Label</th></tr>`+
+ h+=`<div class="card"><div class="wrap"><table><tr><th>Stock/Fund</th><th>Qty</th><th>Avg</th><th>LTP</th><th>Value</th><th>P&L</th><th>Weight</th><th>Type</th><th>PE</th><th>EPS gr.</th><th>PE chg</th><th>Price 1Y</th><th>vs 200d</th><th>Label</th></tr>`+
  rows.map(r=>{const m=r.m,c=!m?"mu":/Attractive|growth/.test(m.label)?"up":/risk|falling|Loss/.test(m.label)?"dn":"wa";
   const peCell=m&&m.pe!=null?(m.bad?"n/a ⚠":m.pe.toFixed(1)):"—";
   const epsCell=m&&m.epsG!=null?f(m.epsG)+(m.basis==="FY"?" FY":""):"—";
   const peChgCell=m&&m.peChg!=null?f(m.peChg):"—";
   const p1yCell=m&&m.price1y!=null?f(m.price1y):"—";
   const dmaCell=m&&m.dma!=null?f(m.dma):"—";
-  return `<tr><td><b>${r.sym}</b></td><td>${r.qty}</td><td>${inr(r.inv/r.qty)}</td><td>${inr(r.ltp)}</td><td>${inr(r.val)}</td><td class="${cl(r.val-r.inv)}">${inr(r.val-r.inv)}</td><td>${(r.val/tv*100).toFixed(1)}%</td><td>${peCell}</td><td class="${cl(m&&m.epsG)}">${epsCell}</td><td class="${cl(m&&m.peChg)}">${peChgCell}</td><td class="${cl(m&&m.price1y)}">${p1yCell}</td><td class="${cl(m&&m.dma)}">${dmaCell}</td><td class="${isGold(r.sym)?"mu":c}">${isGold(r.sym)?"Gold / silver":m?m.label:"—"}</td></tr>`;}).join("")+
- `</table></div><div class="leg">Quantity = "Quantity Available" from the file. Price = current LTP. Compare totals with your broker. EPS growth and PE change use trailing 4 quarters vs the 4 before. Missing data is shown as “—”.</div>`;
+  const typeLabel=r.isMF?"MF":(isGold(r.sym)?"Gold":"Equity");
+  return `<tr><td><b>${r.sym}</b></td><td>${r.qty}</td><td>${inr(r.inv/r.qty)}</td><td>${inr(r.ltp)}</td><td>${inr(r.val)}</td><td class="${cl(r.val-r.inv)}">${inr(r.val-r.inv)}</td><td>${(r.val/tv*100).toFixed(1)}%</td><td><span class="tag mu">${typeLabel}</span></td><td>${peCell}</td><td class="${cl(m&&m.epsG)}">${epsCell}</td><td class="${cl(m&&m.peChg)}">${peChgCell}</td><td class="${cl(m&&m.price1y)}">${p1yCell}</td><td class="${cl(m&&m.dma)}">${dmaCell}</td><td class="${isGold(r.sym)?"mu":c}">${isGold(r.sym)?"Gold / silver":r.isMF?"Mutual Fund":m?m.label:"—"}</td></tr>`;}).join("")+
+ `</table></div><div class="leg">Quantity = "Quantity Available" from the file. Price = current LTP. MF = Mutual Fund. Compare totals with your broker. EPS growth and PE change use trailing 4 quarters vs the 4 before. Missing data is shown as "—".</div>`;
  return h;
 }
 function bindHoldings(){
