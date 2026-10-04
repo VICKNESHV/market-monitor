@@ -138,7 +138,7 @@ function manage(){
 <div class="card"><b>Import Zerodha holdings</b>
 <p class="s">Zerodha Console: Portfolio → Holdings → download, or select the holdings table on the page, copy it and paste below.</p>
 <input type="text" id="hown" placeholder="Owner name (e.g. Me, Wife, Father)" value="${who!=="All"?esc(who):""}">
-<label class="btn">Choose file<input type="file" id="hf" accept=".xlsx,.xls,.csv" hidden></label>
+<label class="btn">Choose file<input type="file" id="hf" hidden></label>
 <textarea id="hpaste" rows="3" ${sty}></textarea><button id="hpb">Import pasted table</button>
 <div class="mu" style="font-size:13px;margin-top:8px">${esc(hmsg)}</div></div>
 <div class="card"><b>Import IBKR holdings</b>
@@ -157,6 +157,22 @@ function manage(){
 ${H.length?`<div class="card"><b>Remove</b><div>${who!=="All"?`<button id="hrm">Remove Zerodha holdings of ${esc(who)}</button>`:""}<button id="hclear">Clear all Zerodha holdings</button></div></div>`:""}
 </details>`;
 }
+
+// Zerodha JSON (Kite API holdings: {data:[...]} or a plain array); other file types go to the original importer
+const _if=importFile;
+importFile=async file=>{
+  if(!/\.json$/i.test(file.name))return _if(file);
+  try{
+    let j=JSON.parse(await file.text());
+    if(!Array.isArray(j))j=j.data||j.holdings||[];
+    const out=j.map(x=>({sym:String(x.tradingsymbol||x.symbol||"").replace(/-(BE|BZ|T0|X1|XT|Z|IL|SM)$/,"").trim(),
+      qty:(num(x.quantity??x.qty)||0)+(num(x.t1_quantity)||0),avg:num(x.average_price??x.avg),ltp:num(x.close_price)||num(x.last_price??x.ltp)}))
+      .filter(x=>x.sym&&x.qty>0&&x.avg!=null&&x.ltp!=null);
+    if(!out.length)throw new Error("no holdings found (expected fields tradingsymbol, quantity, average_price, close_price)");
+    save(ownerName(),out);
+  }catch(e){hmsg="Import failed: "+e.message}
+  show();
+};
 
 holdings=()=>totalCard()+chips()+zCard()+ibCard()+assetCard()+manage();
 
