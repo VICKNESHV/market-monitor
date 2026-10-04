@@ -145,6 +145,7 @@ async function importFile(file){
  }catch(e){hmsg="Import failed: "+e.message}
  show();
 }
+const isGold=s=>/GOLD|SILV|^SGB/i.test(s);
 const sum=a=>a.reduce((s,x)=>s+x,0);
 function metrics(r){
  if(!r||r.last==null)return{basis:"",price1y:null,dma:null,pe:null,epsG:null,peChg:null,label:"No data"};
@@ -156,7 +157,7 @@ function metrics(r){
  m.loss=now!=null&&now<=0;
  m.pe=now>0?r.last/now:null;
  m.epsG=now!=null&&ago>0?(now/ago-1)*100:null;
- m.peAgo=basis==="TTM"&&ago>0&&r.ago?r.ago/ago:null;
+ m.peAgo=ago>0&&r.ago?r.ago/ago:null;
  m.peChg=m.pe!=null&&m.peAgo!=null?(m.pe/m.peAgo-1)*100:null;
  m.label=m.loss?"Loss-making":m.epsG==null?"No earnings data":m.epsG<0&&m.peChg>0?"High risk / Overvalued":m.epsG<0?"Earnings falling":m.epsG>=15?"High growth":"Fair / Stagnant";
  return m;
@@ -164,16 +165,17 @@ function metrics(r){
 async function analyse(){
  if(!W){hmsg="Paste your Worker address first.";return show()}
  const raw={};
- for(let i=0;i<H.length;i+=15){
-  hmsg=`Analysing ${Math.min(i+15,H.length)} of ${H.length}…`;show();
+ const eq=H.filter(h=>!isGold(h.sym));
+ for(let i=0;i<eq.length;i+=15){
+  hmsg=`Analysing ${Math.min(i+15,eq.length)} of ${eq.length}…`;show();
   try{
-   const r=await fetch(W+(W.includes("?")?"&":"?")+"s="+encodeURIComponent(H.slice(i,i+15).map(h=>h.sym).join(",")));
+   const r=await fetch(W+(W.includes("?")?"&":"?")+"s="+encodeURIComponent(eq.slice(i,i+15).map(h=>h.sym).join(",")));
    if(!r.ok)throw new Error("HTTP "+r.status);
    Object.assign(raw,await r.json());
   }catch(e){hmsg="Worker error: "+e.message;return show()}
  }
  A={at:new Date().toISOString().slice(0,16).replace("T"," ")};
- for(const h of H)A[h.sym]=metrics(raw[h.sym]);
+ for(const h of eq)A[h.sym]=metrics(raw[h.sym]);
  lsSet("mm_analysis",A);hmsg="Analysis done.";show();
 }
 function holdings(){
@@ -186,28 +188,30 @@ function holdings(){
  if(!H.length)return h;
  const rows=H.map(x=>({...x,val:x.qty*x.ltp,inv:x.qty*x.avg,m:A[x.sym]||null})).sort((a,b)=>b.val-a.val);
  const tv=sum(rows.map(r=>r.val)),ti=sum(rows.map(r=>r.inv)),pl=tv-ti;
- const got=rows.filter(r=>r.m),peRows=got.filter(r=>r.m.pe>0);
- const cov=tv?sum(peRows.map(r=>r.val))/tv*100:0;
+ const gold=rows.filter(r=>isGold(r.sym)),gv=sum(gold.map(r=>r.val)),ev=tv-gv;
+ const got=rows.filter(r=>r.m&&!isGold(r.sym)),peRows=got.filter(r=>r.m.pe>0);
+ const cov=ev?sum(peRows.map(r=>r.val))/ev*100:0;
  const pPE=peRows.length?sum(peRows.map(r=>r.val))/sum(peRows.map(r=>r.val/r.m.pe)):null;
- const share=f=>tv?sum(got.filter(f).map(r=>r.val))/tv*100:0;
+ const share=f=>ev?sum(got.filter(f).map(r=>r.val))/ev*100:0;
  const top5=tv?sum(rows.slice(0,5).map(r=>r.val))/tv*100:0;
  h+=`<div class="card"><b>Portfolio</b><div class="grid">
  <div class="m"><small>Invested</small><b>${inr(ti)}</b></div><div class="m"><small>Value</small><b>${inr(tv)}</b></div>
  <div class="m"><small>P&L</small><b class="${cl(pl)}">${inr(pl)} (${f(ti?pl/ti*100:null)})</b></div>
- <div class="m"><small>Holdings</small><b>${rows.length}</b></div><div class="m"><small>Top 5 weight</small><b>${top5.toFixed(0)}%</b></div></div>`;
- if(got.length)h+=`<div class="grid"><div class="m"><small>Portfolio PE</small><b>${pPE==null?"—":pPE.toFixed(1)}</b></div>
+ <div class="m"><small>Holdings</small><b>${rows.length}</b></div><div class="m"><small>Top 5 weight</small><b>${top5.toFixed(0)}%</b></div>
+ <div class="m"><small>Gold &amp; silver</small><b>${tv?(gv/tv*100).toFixed(0):0}%</b></div><div class="m"><small>Equity &amp; other</small><b>${tv?(ev/tv*100).toFixed(0):0}%</b></div></div>`;
+ if(got.length)h+=`<div class="grid"><div class="m"><small>Equity PE</small><b>${pPE==null?"—":pPE.toFixed(1)}</b></div>
  <div class="m"><small>PE coverage</small><b>${cov.toFixed(0)}%</b></div>
  <div class="m"><small>High growth</small><b class="up">${share(r=>r.m.label==="High growth").toFixed(0)}%</b></div>
  <div class="m"><small>Earnings falling</small><b class="dn">${share(r=>/falling|risk/.test(r.m.label)).toFixed(0)}%</b></div>
  <div class="m"><small>Below 200-day</small><b>${share(r=>r.m.dma<0).toFixed(0)}%</b></div></div>
- <div class="leg">Portfolio PE = value-weighted (total value ÷ total earnings) over holdings with positive earnings. Analysis from ${A.at}. Missing data is shown as —, never estimated.</div>`;
+ <div class="leg">Equity figures cover the non-gold/silver part only. Equity PE = value-weighted (total value ÷ total earnings) over holdings with positive earnings. Analysis from ${A.at}. Missing data is shown as —, never estimated.</div>`;
  h+=`<button id="han">${got.length?"Refresh analysis":"Analyse PE and EPS growth"}</button></div>`;
  h+=`<div class="card"><div class="wrap"><table><tr><th>Stock</th><th>Weight</th><th>P&L</th><th>PE</th><th>EPS gr.</th><th>PE chg</th><th>Price 1Y</th><th>vs 200d</th><th>Label</th></tr>`+
  rows.map(r=>{const m=r.m,c=!m?"mu":/Attractive|growth/.test(m.label)?"up":/risk|falling|Loss/.test(m.label)?"dn":"wa";
   return `<tr><td><b>${r.sym}</b></td><td>${(r.val/tv*100).toFixed(1)}%</td><td class="${cl(r.val-r.inv)}">${f((r.val/r.inv-1)*100)}</td>
-  <td>${m&&m.pe!=null?m.pe.toFixed(1):"—"}</td><td class="${cl(m&&m.epsG)}">${m?f(m.epsG)+(m.basis==="FY"?" FY":""):"—"}</td><td class="${cl(m&&m.peChg)}">${m?f(m.peChg):"—"}</td>
-  <td class="${cl(m&&m.price1y)}">${m?f(m.price1y):"—"}</td><td class="${cl(m&&m.dma)}">${m?f(m.dma):"—"}</td><td class="${c}">${m?m.label:"—"}</td></tr>`}).join("")+
- `</table></div><div class="leg">Quantity = "Quantity Available" from your file, price = previous close. Compare the total with Zerodha. EPS growth = trailing 4 quarters vs the 4 before (or latest vs previous financial year, marked FY). Labels here have no 5-year PE percentile, so there is no "cheap" label.</div></div>`;
+  <td>${m&&m.pe!=null?m.pe.toFixed(1)+(m.pe>150?" ⚠":""):"—"}</td><td class="${cl(m&&m.epsG)}">${m?f(m.epsG)+(m.basis==="FY"?" FY":""):"—"}</td><td class="${cl(m&&m.peChg)}">${m?f(m.peChg):"—"}</td>
+  <td class="${cl(m&&m.price1y)}">${m?f(m.price1y):"—"}</td><td class="${cl(m&&m.dma)}">${m?f(m.dma):"—"}</td><td class="${isGold(r.sym)?"mu":c}">${isGold(r.sym)?"Gold / silver":m?m.label:"—"}</td></tr>`}).join("")+
+ `</table></div><div class="leg">Quantity = "Quantity Available" from your file, price = previous close. Compare the total with Zerodha. EPS growth and PE change use trailing 4 quarters vs the 4 before, or the latest vs previous financial year when quarterly history is short (marked FY; then PE change compares today with a year ago on each year's reported EPS). ⚠ = PE above 150, probably a data problem (for example EPS in another currency). Gold and silver holdings have no PE, so they are skipped. Labels here have no 5-year PE percentile, so there is no "cheap" label.</div></div>`;
  return h;
 }
 function bindHoldings(){
