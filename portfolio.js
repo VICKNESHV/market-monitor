@@ -75,26 +75,55 @@ function totalCard(){
   cls.map(([n,v],i)=>`<div class="top" style="margin-top:8px"><span><span class="dot" style="background:${COL[i%8]}"></span>${esc(n)}</span><span><b>${inr(v)}</b> <span class="mu">${(v/tv*100).toFixed(1)}%</span></span></div>`).join("")+
   `<div class="leg">Zerodha = quantity × previous close (funds at NAV). IBKR converted to ₹ at the latest USD/INR and EUR/USD from the Markets data, or rates you entered. Other assets are values you typed in. Gold in all forms (ETFs and physical): ${(gold/tv*100).toFixed(1)}%.${noRate.length?` <span class="wa">Excluded until a rate is entered: ${noRate.map(esc).join(", ")}.</span>`:""}</div></div>`;
 }
+const SO=ls.get("mm_sections")||{};
+const sec=(k,title,body)=>`<details class="sec" data-k="${k}" ${SO[k]===false?"":"open"}><summary>${title}</summary>${body}</details>`;
+const nf=x=>x==null?"—":x.toLocaleString("en-US",{maximumFractionDigits:2});
 function ibCard(){
   const by={};
   for(const x of IB.filter(x=>mine(x.owner))){
-    const r=by[x.sym+"|"+x.ccy]||(by[x.sym+"|"+x.ccy]={sym:x.sym,ccy:x.ccy,qty:0,inv:0,val:0});
-    r.qty+=x.qty;r.inv+=x.qty*x.avg;r.val+=x.qty*x.ltp;
+    const k=x.sym+"|"+x.ccy,r=by[k]||(by[k]={sym:x.sym,ccy:x.ccy,qty:0,inv:0,val:0,ltp:x.ltp});
+    r.qty+=x.qty;r.inv+=x.qty*x.avg;r.val+=x.qty*x.ltp;r.ltp=x.ltp;
   }
-  const rows=Object.values(by).map(r=>{const fx=rate(r.ccy);return {...r,fx,inr:fx?r.val*fx:null}}).sort((a,b)=>(b.inr||0)-(a.inr||0));
+  const rows=Object.values(by).map(r=>{const fx=rate(r.ccy);return {...r,fx,inrV:fx?r.val*fx:null,inrI:fx?r.inv*fx:null}}).sort((a,b)=>(b.inrV||0)-(a.inrV||0));
   if(!rows.length)return "";
-  const miss=[...new Set(rows.filter(r=>!r.fx).map(r=>r.ccy))];
-  return `<div class="card"><b>IBKR holdings</b>
-${miss.length?`<div class="wa" style="font-size:13px;margin-top:8px">No ₹ rate for ${miss.map(esc).join(", ")}. Enter ₹ per 1 unit:</div>${miss.map(c=>`<input type="text" class="fxin" data-c="${esc(c)}" placeholder="INR per ${esc(c)}" style="margin-top:6px">`).join("")}<button id="fxs">Save rates</button>`:""}
-<div class="wrap" style="margin-top:8px"><table style="min-width:520px"><tr><th>Symbol</th><th>Ccy</th><th>Qty</th><th>P&amp;L</th><th style="text-align:right">Value (₹)</th></tr>`+
-  rows.map(r=>`<tr><td><b>${esc(r.sym)}</b></td><td>${esc(r.ccy)}</td><td>${r.qty}</td><td class="${cl(r.val-r.inv)}">${f(r.inv?(r.val/r.inv-1)*100:null)}</td><td style="text-align:right">${r.inr==null?"—":inr(r.inr)}</td></tr>`).join("")+`</table></div></div>`;
+  const ok=rows.filter(r=>r.fx),miss=[...new Set(rows.filter(r=>!r.fx).map(r=>r.ccy))];
+  const tv=sum(ok.map(r=>r.inrV)),ti=sum(ok.map(r=>r.inrI)),pl=tv-ti,top5=tv?sum(ok.slice(0,5).map(r=>r.inrV))/tv*100:0;
+  const body=`<div class="card"><b>IBKR portfolio${who!=="All"?" · "+esc(who):""}</b><div class="grid">
+<div class="m"><small>Invested</small><b>${inr(ti)}</b></div><div class="m"><small>Value</small><b>${inr(tv)}</b></div>
+<div class="m"><small>P&amp;L</small><b class="${cl(pl)}">${inr(pl)} (${f(ti?pl/ti*100:null)})</b></div>
+<div class="m"><small>Holdings</small><b>${rows.length}</b></div><div class="m"><small>Top 5 weight</small><b>${top5.toFixed(0)}%</b></div></div>
+<div class="leg">Summary figures are in ₹. Cost is converted at today's rate, so currency gains or losses since purchase are not included in P&amp;L. Table prices are in each position's own currency.</div>
+${miss.length?`<div class="wa" style="font-size:13px;margin-top:8px">No ₹ rate for ${miss.map(esc).join(", ")}. Enter ₹ per 1 unit:</div>${miss.map(c=>`<input type="text" class="fxin" data-c="${esc(c)}" placeholder="INR per ${esc(c)}" style="margin-top:6px">`).join("")}<button id="fxs">Save rates</button>`:""}</div>
+<div class="card"><div class="wrap"><table style="min-width:840px"><tr><th>Symbol</th><th>Ccy</th><th>Qty</th><th>Avg</th><th>LTP</th><th>Value</th><th>P&amp;L</th><th>P&amp;L %</th><th>Weight</th><th style="text-align:right">Value (₹)</th></tr>`+
+  rows.map(r=>`<tr><td><b>${esc(r.sym)}</b></td><td>${esc(r.ccy)}</td><td>${r.qty}</td><td>${nf(r.inv/r.qty)}</td><td>${nf(r.ltp)}</td><td>${nf(r.val)}</td><td class="${cl(r.val-r.inv)}">${nf(r.val-r.inv)}</td><td class="${cl(r.val-r.inv)}">${f(r.inv?(r.val/r.inv-1)*100:null)}</td><td>${r.inrV&&tv?(r.inrV/tv*100).toFixed(1)+"%":"—"}</td><td style="text-align:right">${r.inrV==null?"—":inr(r.inrV)}</td></tr>`).join("")+`</table></div></div>`;
+  return sec("i",`IBKR holdings (${rows.length})`,body);
 }
 function assetCard(){
   const L=AS.filter(x=>mine(x.owner));
   if(!L.length)return "";
-  return `<div class="card"><b>Other assets</b><div class="wrap" style="margin-top:8px"><table style="min-width:520px"><tr><th>Type</th><th>Name</th><th>Updated</th><th style="text-align:right">Value</th><th></th></tr>`+
-  L.map(x=>`<tr><td>${esc(x.type)}</td><td>${esc(x.name)}</td><td>${esc(x.updated)}</td><td style="text-align:right">${inr(x.value)}</td><td><button class="aed" data-i="${esc(x.id)}">Edit</button><button class="arm" data-i="${esc(x.id)}">Remove</button></td></tr>`).join("")+`</table></div></div>`;
+  return sec("a",`Other assets (${L.length})`,`<div class="card"><div class="wrap"><table style="min-width:520px"><tr><th>Type</th><th>Name</th><th>Updated</th><th style="text-align:right">Value</th><th></th></tr>`+
+  L.map(x=>`<tr><td>${esc(x.type)}</td><td>${esc(x.name)}</td><td>${esc(x.updated)}</td><td style="text-align:right">${inr(x.value)}</td><td><button class="aed" data-i="${esc(x.id)}">Edit</button><button class="arm" data-i="${esc(x.id)}">Remove</button></td></tr>`).join("")+`</table></div></div>`);
 }
+// Same table as index.html's renderAssetTable, plus a P&L % column for Zerodha equities, funds and gold/silver
+renderAssetTable=function(rows,tv,title,assetType){
+  if(!rows.length)return"";
+  const isEq=assetType==="eq";
+  const header=`<tr><th>Symbol</th><th>Qty</th><th>Avg</th><th>LTP</th><th>Value</th><th>P&L</th><th>P&L %</th><th>Weight</th>
+ ${isEq?`<th>PE</th><th>EPS gr.</th><th>PE chg</th><th>Price 1Y</th><th>vs 200d</th>`:""}<th>Label</th></tr>`;
+  const content=rows.map(r=>{const m=r.m,c=!m?"mu":/Attractive|growth/.test(m.label)?"up":/risk|falling|Loss/.test(m.label)?"dn":"wa";
+    const peCell=isEq?(m&&m.pe!=null?(m.bad?"n/a ⚠":m.pe.toFixed(1)):"—"):"";
+    const epsCell=isEq?(m&&m.epsG!=null?f(m.epsG)+(m.basis==="FY"?" FY":""):"—"):"";
+    const peChgCell=isEq?(m&&m.peChg!=null?f(m.peChg):"—"):"";
+    const p1yCell=isEq?(m&&m.price1y!=null?f(m.price1y):"—"):"";
+    const dmaCell=isEq?(m&&m.dma!=null?f(m.dma):"—"):"";
+    return `<tr><td><b>${r.sym}</b></td><td>${r.qty}</td><td>${inr(r.inv/r.qty)}</td><td>${inr(r.ltp)}</td><td>${inr(r.val)}</td><td class="${cl(r.val-r.inv)}">${inr(r.val-r.inv)}</td><td class="${cl(r.val-r.inv)}">${f(r.inv?(r.val/r.inv-1)*100:null)}</td><td>${(r.val/tv*100).toFixed(1)}%</td>
+ ${isEq?`<td>${peCell}</td><td class="${cl(m&&m.epsG)}">${epsCell}</td><td class="${cl(m&&m.peChg)}">${peChgCell}</td><td class="${cl(m&&m.price1y)}">${p1yCell}</td><td class="${cl(m&&m.dma)}">${dmaCell}</td>`:""}<td class="${c}">${m?m.label:"—"}</td></tr>`;}).join("");
+  const isOpen=!collapsedSections[assetType];
+  return `<div class="table-section"><div class="collapsible-header ${isOpen?"open":""}" data-section="${assetType}">
+ <span class="toggle">▶</span><span>${title} (${rows.length})</span></div>
+ <div class="collapsible-content"><div class="wrap"><table>${header}${content}</table></div></div></div>`;
+};
+
 function manage(){
   return `<details class="mg" id="mg" ${mopen?"open":""}><summary>Add IBKR holdings and other assets</summary>
 <div class="card"><b>Import IBKR holdings</b>
@@ -126,6 +155,7 @@ nav,#nav,#upd,button,label.btn,input,textarea,select,details.mg,.asset-filters,.
 .card{break-inside:auto;border-color:#ccc;margin-bottom:8px}
 .card:has(.bar){break-inside:avoid}
 .wrap{overflow:visible}
+details.sec>summary{background:none!important;border:0!important;border-bottom:1px solid #999!important;border-radius:0!important;padding:4px 0!important;margin:10px 0 6px!important;font-size:13px}
 table{min-width:0!important;width:100%;font-size:9.5px}
 th,td{padding:2px 4px}
 thead{display:table-header-group}
@@ -136,6 +166,8 @@ document.head.appendChild(st);
 let _title=document.title;
 function prepPrint(){
   if((location.hash.slice(1)||"home").toLowerCase()!=="holdings")return;
+  if(!window.__pfp)document.querySelectorAll("details.sec").forEach(d=>{d.dataset.was=d.open?"1":""});
+  window.__pfp=true;document.querySelectorAll("details.sec").forEach(d=>{d.open=true});
   const HIDE=["Import holdings","Worker address","Whose holdings"];
   document.querySelectorAll("#v .card").forEach(c=>{const b=c.querySelector("b");if(b&&HIDE.includes(b.textContent.trim()))c.classList.add("pf-hide")});
   document.querySelectorAll("#v table").forEach(t=>{if(!t.tHead&&t.rows[0])t.createTHead().appendChild(t.rows[0])});   // repeat header rows on every page
@@ -145,13 +177,17 @@ function prepPrint(){
   document.title="Holdings report "+today();
 }
 addEventListener("beforeprint",prepPrint);
-addEventListener("afterprint",()=>{document.title=_title});
+addEventListener("afterprint",()=>{document.title=_title;document.querySelectorAll("details.sec").forEach(d=>{d.open=!!d.dataset.was});setTimeout(()=>{window.__pfp=false},200)});
 
 const _h=holdings,_b=bindHoldings;
 holdings=()=>`<div class="printonly" id="prhd"></div><div class="noprint" style="text-align:right"><button id="pdf">Export PDF</button></div>`+totalCard()+_h()+ibCard()+assetCard()+manage();
 bindHoldings=()=>{
+  window.__pfp=false;
   _b();
   const $=id=>document.getElementById(id);
+  const zc=[...document.querySelectorAll("#v>.card")].filter(c=>{const t=((c.querySelector("b")||{}).textContent||"").trim();return /^Portfolio/.test(t)||t==="View by Asset Class"});
+  if(zc.length){const d=document.createElement("details");d.className="sec";d.dataset.k="z";if(SO.z!==false)d.open=true;d.innerHTML="<summary>Zerodha holdings</summary>";zc[0].before(d);zc.forEach(c=>d.appendChild(c))}
+  document.querySelectorAll("details.sec").forEach(d=>d.ontoggle=()=>{if(window.__pfp)return;SO[d.dataset.k]=d.open;lsSet("mm_sections",SO)});
   const hf=$("hf");if(hf)hf.removeAttribute("accept");   // lets phones pick .json files
   $("mg").ontoggle=e=>{mopen=e.target.open};
   if($("pdf"))$("pdf").onclick=()=>{
