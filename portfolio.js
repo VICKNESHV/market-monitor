@@ -3,9 +3,10 @@
 (()=>{
 if(window.__pf)return;window.__pf=1;   // safe if the script tag is accidentally included twice
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const TYPES=["Physical gold","PPF","Real estate","Other"];
-const COL=["var(--up)","#3b82f6","var(--wa)","#8b5cf6","#14b8a6","#ec4899","#f97316","var(--mut)"];
-let IB=ls.get("mm_ibkr")||[],AS=ls.get("mm_assets")||[],FX=ls.get("mm_fx")||{},imsg="",amsg="",mopen=null;
+const TYPES=["PPF","Fixed deposit","Other fixed income","Physical gold","Real estate","Other asset"];
+const KIND={"PPF":"fi","Fixed deposit":"fi","Other fixed income":"fi","Physical gold":"gold","Real estate":"re","Other asset":"gen"};
+const COL=["var(--up)","#3b82f6","var(--wa)","#8b5cf6","#14b8a6","#ec4899","#f97316","#eab308","#06b6d4","var(--mut)"];
+let IB=ls.get("mm_ibkr")||[],AS=(ls.get("mm_assets")||[]).map(x=>x.type==="Other"?{...x,type:"Other asset"}:x),FX=ls.get("mm_fx")||{},imsg="",amsg="",mopen=null;
 const mine=o=>who==="All"||o===who,today=()=>new Date().toISOString().slice(0,10);
 const macroLast=n=>{const x=(M.macro||[]).find(m=>m.name===n);return x?x.last:null};
 // INR per 1 unit: typed-in rate first, then USD/INR and EUR/USD×USD/INR from markets.json
@@ -56,6 +57,29 @@ async function ibFile(file){
   mopen=true;show();
 }
 
+
+// ---------- Other assets: valuation per kind (fi = fixed income, gold, re = real estate, gen = other) ----------
+const yrs=d=>Math.max(0,(Date.now()-new Date(d))/(365.25*864e5));
+const pos=x=>x!=null&&x>0;
+function calc(a){
+  if(a.kind==="fi"){
+    const n={Annual:1,Quarterly:4,Monthly:12}[a.comp],y=yrs(a.date);
+    return {inv:a.buy,val:n?a.buy*Math.pow(1+a.rate/100/n,n*y):a.buy*(1+a.rate/100*y),det:`${a.rate}% p.a. · ${String(a.comp).toLowerCase()}`};
+  }
+  if(a.kind==="gold"){const g=a.grams*a.units;return {inv:g*a.buyp,val:g*a.curp,det:`${a.carat}K · ${a.grams} g × ${a.units} · ₹${nf(a.curp)}/g`}}
+  if(a.kind==="re"){const q=a.area*a.units;return {inv:q*a.buyp,val:q*a.curp,det:`${nf(q)} sq ft · ₹${nf(a.curp)}/sq ft`}}
+  if(a.kind==="gen")return {inv:a.units*a.buyp,val:a.units*a.curp,det:`${a.units} × ₹${nf(a.curp)}`};
+  return {inv:null,val:a.value||0,det:"manual value"};   // assets saved before categories existed
+}
+const lab=(t,id,ph,type)=>`<label class="s" style="display:block;margin:8px 0 2px">${t}</label><input ${type==="date"?`type="date" ${sty}`:'type="text" inputmode="decimal"'} id="${id}" placeholder="${ph||""}">`;
+const sel=(t,id,opts)=>`<label class="s" style="display:block;margin:8px 0 2px">${t}</label><select id="${id}" ${sty}>${opts.map(o=>`<option>${o}</option>`).join("")}</select>`;
+function fields(k){
+  if(k==="fi")return lab("Amount invested (₹)","abuy","e.g. 150000")+lab("Buy date","adate","","date")+lab("Interest rate (% a year)","arate","e.g. 7.1")+sel("Interest is added","acomp",["Annual","Quarterly","Monthly","Simple"]);
+  if(k==="gold")return lab("Grams per unit","agrams","e.g. 10")+sel("Purity","acarat",["22","24"])+lab("Number of units","aunits","1")+lab("Buy price per gram (₹)","abuyp")+lab("Current price per gram (₹, for this purity)","acurp")+lab("Buy date (optional)","adate","","date");
+  if(k==="re")return lab("Area per unit (sq ft)","aarea","e.g. 1200")+lab("Number of units","aunits","1")+lab("Buy price per sq ft (₹)","abuyp")+lab("Current price per sq ft (₹)","acurp")+lab("Buy date (optional)","adate","","date");
+  return lab("Number of units","aunits","1")+lab("Buy price per unit (₹)","abuyp")+lab("Current price per unit (₹)","acurp")+lab("Buy date (optional)","adate","","date");
+}
+
 // ---------- Sections added around your existing Holdings view ----------
 function totalCard(){
   const val=x=>x.qty*x.ltp,z=H.filter(x=>mine(x.owner));
@@ -64,15 +88,15 @@ function totalCard(){
   const ze=sum(z.filter(x=>!isGold(x.sym)&&!x.isMutualFund).map(val));
   const L=IB.filter(x=>mine(x.owner)),noRate=[...new Set(L.filter(x=>!rate(x.ccy)).map(x=>x.ccy))];
   const ibv=sum(L.map(x=>{const r=rate(x.ccy);return r?x.qty*x.ltp*r:0}));
-  const A2=AS.filter(x=>mine(x.owner)),bt=t=>sum(A2.filter(x=>x.type===t).map(x=>x.value));
+  const A2=AS.filter(x=>mine(x.owner)),bt=t=>sum(A2.filter(x=>x.type===t).map(x=>calc(x).val));
   const cls=[["Zerodha equities",ze],["Zerodha mutual funds",zm],["Zerodha gold & silver",zg],["IBKR (in ₹)",ibv],...TYPES.map(t=>[t,bt(t)])].filter(c=>c[1]);
   const tv=sum(cls.map(c=>c[1]));
   if(!tv)return "";
   const gold=zg+bt("Physical gold"),full=inr(tv);
   return `<div class="card"><b>Total holdings${who!=="All"?" · "+esc(who):""}</b>
 <div style="margin:8px 0 10px"><b style="font-size:26px">${cr(tv)}</b>${cr(tv)!==full?` <span class="mu" style="font-size:13px">${full}</span>`:""}</div>
-<div class="bar" style="height:14px">${cls.map(([n,v],i)=>`<i title="${esc(n)}" style="width:${Math.max(0,v/tv*100)}%;background:${COL[i%8]}"></i>`).join("")}</div>`+
-  cls.map(([n,v],i)=>`<div class="top" style="margin-top:8px"><span><span class="dot" style="background:${COL[i%8]}"></span>${esc(n)}</span><span><b>${inr(v)}</b> <span class="mu">${(v/tv*100).toFixed(1)}%</span></span></div>`).join("")+
+<div class="bar" style="height:14px">${cls.map(([n,v],i)=>`<i title="${esc(n)}" style="width:${Math.max(0,v/tv*100)}%;background:${COL[i%COL.length]}"></i>`).join("")}</div>`+
+  cls.map(([n,v],i)=>`<div class="top" style="margin-top:8px"><span><span class="dot" style="background:${COL[i%COL.length]}"></span>${esc(n)}</span><span><b>${inr(v)}</b> <span class="mu">${(v/tv*100).toFixed(1)}%</span></span></div>`).join("")+
   `<div class="leg">Zerodha = quantity × previous close (funds at NAV). IBKR converted to ₹ at the latest USD/INR and EUR/USD from the Markets data, or rates you entered. Other assets are values you typed in. Gold in all forms (ETFs and physical): ${(gold/tv*100).toFixed(1)}%.${noRate.length?` <span class="wa">Excluded until a rate is entered: ${noRate.map(esc).join(", ")}.</span>`:""}</div></div>`;
 }
 const SO=ls.get("mm_sections")||{};
@@ -101,8 +125,17 @@ ${miss.length?`<div class="wa" style="font-size:13px;margin-top:8px">No ₹ rate
 function assetCard(){
   const L=AS.filter(x=>mine(x.owner));
   if(!L.length)return "";
-  return sec("a",`Other assets (${L.length})`,`<div class="card"><div class="wrap"><table style="min-width:520px"><tr><th>Type</th><th>Name</th><th>Updated</th><th style="text-align:right">Value</th><th></th></tr>`+
-  L.map(x=>`<tr><td>${esc(x.type)}</td><td>${esc(x.name)}</td><td>${esc(x.updated)}</td><td style="text-align:right">${inr(x.value)}</td><td><button class="aed" data-i="${esc(x.id)}">Edit</button><button class="arm" data-i="${esc(x.id)}">Remove</button></td></tr>`).join("")+`</table></div></div>`);
+  const rows=L.map(x=>({x,...calc(x)})).sort((p,q)=>q.val-p.val);
+  const tv=sum(rows.map(r=>r.val)),wc=rows.filter(r=>r.inv!=null),ti=sum(wc.map(r=>r.inv)),pl=sum(wc.map(r=>r.val))-ti;
+  const top5=tv?sum(rows.slice(0,5).map(r=>r.val))/tv*100:0,sh=k=>tv?(sum(rows.filter(r=>r.x.kind===k).map(r=>r.val))/tv*100).toFixed(0):0;
+  return sec("a",`Other assets (${L.length})`,`<div class="card"><b>Other assets portfolio${who!=="All"?" · "+esc(who):""}</b><div class="grid">
+<div class="m"><small>Invested</small><b>${inr(ti)}</b></div><div class="m"><small>Value</small><b>${inr(tv)}</b></div>
+<div class="m"><small>P&amp;L</small><b class="${cl(pl)}">${inr(pl)} (${f(ti?pl/ti*100:null)})</b></div>
+<div class="m"><small>Holdings</small><b>${rows.length}</b></div><div class="m"><small>Top 5 weight</small><b>${top5.toFixed(0)}%</b></div>
+<div class="m"><small>Fixed income</small><b>${sh("fi")}%</b></div><div class="m"><small>Physical gold</small><b>${sh("gold")}%</b></div><div class="m"><small>Real estate</small><b>${sh("re")}%</b></div></div>
+<div class="leg">Fixed income is valued from the amount, buy date and rate you entered, as of today; actual payouts (for example PPF rate changes) can differ. Gold, real estate and other assets use the current price you entered, so update it when it changes. Assets without a buy price are left out of Invested and P&amp;L.</div></div>
+<div class="card"><div class="wrap"><table style="min-width:900px"><tr><th>Name</th><th>Type</th><th>Details</th><th>Buy date</th><th>Invested</th><th>Value</th><th>P&amp;L</th><th>P&amp;L %</th><th>Weight</th><th></th></tr>`+
+  rows.map(({x,inv,val,det})=>`<tr><td><b>${esc(x.name)}</b></td><td>${esc(x.type)}</td><td>${esc(det)}</td><td>${esc(x.date||"—")}</td><td>${inr(inv)}</td><td>${inr(val)}</td><td class="${cl(inv==null?null:val-inv)}">${inv==null?"—":inr(val-inv)}</td><td class="${cl(inv==null?null:val-inv)}">${inv?f((val/inv-1)*100):"—"}</td><td>${tv?(val/tv*100).toFixed(1)+"%":"—"}</td><td><button class="aed" data-i="${esc(x.id)}">Edit</button><button class="arm" data-i="${esc(x.id)}">Remove</button></td></tr>`).join("")+`</table></div></div>`);
 }
 // Same table as index.html's renderAssetTable, plus a P&L % column for Zerodha equities, funds and gold/silver
 renderAssetTable=function(rows,tv,title,assetType){
@@ -132,10 +165,10 @@ function manage(){
 <textarea id="ipaste" rows="3" placeholder="Or paste the CSV text here" ${sty}></textarea><button id="ipb">Import pasted</button>${IB.length?'<button id="iclr">Remove all IBKR</button>':""}
 <div class="mu" style="font-size:13px;margin-top:8px">${esc(imsg)}</div></div>
 <div class="card"><b>Add other asset</b>
-<p class="s">Physical gold, PPF, real estate or anything else. Enter the current value in ₹ and update it when it changes.</p>
+<p class="s">Choose the type; the fields change to fit it. Fixed income is valued from the amount, buy date and interest rate. Gold, real estate and other assets use the current price you enter.</p>
 <select id="atype" ${sty}>${TYPES.map(t=>`<option>${t}</option>`).join("")}</select>
-<input type="text" id="aname" placeholder="Name (e.g. Gold coins 50 g, SBI PPF, Flat in Chennai)" style="margin-top:6px">
-<input type="text" id="aval" inputmode="decimal" placeholder="Current value in ₹" style="margin-top:6px">
+<input type="text" id="aname" placeholder="Name (e.g. SBI PPF, Gold coins, Flat in Chennai)" style="margin-top:6px">
+<div id="afields">${fields("fi")}</div>
 <button id="aadd">Add asset</button><div class="mu" style="font-size:13px;margin-top:8px">${esc(amsg)}</div></div></details>`;
 }
 
@@ -213,18 +246,25 @@ bindHoldings=()=>{
     document.querySelectorAll(".fxin").forEach(i=>{const v=num(i.value);if(v>0)FX[i.dataset.c]=v});
     lsSet("mm_fx",FX);show();
   };
+  $("atype").onchange=()=>{$("afields").innerHTML=fields(KIND[$("atype").value])};
   $("aadd").onclick=()=>{
-    const v=num($("aval").value),n=$("aname").value.trim();
     mopen=true;
-    if(!n||v==null||v<0){amsg="Enter a name and a value in ₹.";return show()}
-    AS.push({id:Date.now()+"",owner:ownerName(),type:$("atype").value,name:n,value:v,updated:today()});
-    lsSet("mm_assets",AS);amsg="Added "+n+".";show();
+    const t=$("atype").value,k=KIND[t],g=id=>{const e=$(id);return e?e.value:""},N=id=>num(g(id));
+    const a={id:Date.now()+"",owner:ownerName(),type:t,kind:k,name:$("aname").value.trim(),date:g("adate"),updated:today()};
+    let ok=!!a.name;
+    if(k==="fi"){a.buy=N("abuy");a.rate=N("arate");a.comp=g("acomp");ok=ok&&pos(a.buy)&&a.rate!=null&&a.rate>=0&&!!a.date}
+    else{a.units=N("aunits")||1;a.buyp=N("abuyp");a.curp=N("acurp");ok=ok&&pos(a.units)&&pos(a.buyp)&&pos(a.curp);
+      if(k==="gold"){a.grams=N("agrams");a.carat=g("acarat");ok=ok&&pos(a.grams)}
+      if(k==="re"){a.area=N("aarea");ok=ok&&pos(a.area)}}
+    if(!ok){amsg=k==="fi"?"Enter a name, amount, buy date and interest rate.":"Enter a name and all the numbers (buy and current price must be above 0).";return show()}
+    AS.push(a);lsSet("mm_assets",AS);amsg="Added "+a.name+".";show();
   };
   document.querySelectorAll(".aed").forEach(b=>b.onclick=()=>{
     const x=AS.find(a=>a.id===b.dataset.i);if(!x)return;
-    const v=num(prompt("New value in ₹ for "+x.name,x.value));
+    const what={fi:["interest rate (% a year)","rate"],gold:["current price per gram (₹)","curp"],re:["current price per sq ft (₹)","curp"],gen:["current price per unit (₹)","curp"]}[x.kind]||["value (₹)","value"];
+    const v=num(prompt("New "+what[0]+" for "+x.name,x[what[1]]));
     if(v==null||v<0)return;
-    x.value=v;x.updated=today();lsSet("mm_assets",AS);show();
+    x[what[1]]=v;x.updated=today();lsSet("mm_assets",AS);show();
   });
   document.querySelectorAll(".arm").forEach(b=>b.onclick=()=>{
     AS=AS.filter(a=>a.id!==b.dataset.i);lsSet("mm_assets",AS);show();
