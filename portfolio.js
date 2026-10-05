@@ -5,7 +5,7 @@ if(window.__pf)return;window.__pf=1;   // safe if the script tag is accidentally
 const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const TYPES=["Physical gold","PPF","Real estate","Other"];
 const COL=["var(--up)","#3b82f6","var(--wa)","#8b5cf6","#14b8a6","#ec4899","#f97316","var(--mut)"];
-let IB=ls.get("mm_ibkr")||[],AS=ls.get("mm_assets")||[],FX=ls.get("mm_fx")||{},imsg="",amsg="",mopen=false;
+let IB=ls.get("mm_ibkr")||[],AS=ls.get("mm_assets")||[],FX=ls.get("mm_fx")||{},imsg="",amsg="",mopen=null;
 const mine=o=>who==="All"||o===who,today=()=>new Date().toISOString().slice(0,10);
 const macroLast=n=>{const x=(M.macro||[]).find(m=>m.name===n);return x?x.last:null};
 // INR per 1 unit: typed-in rate first, then USD/INR and EUR/USD×USD/INR from markets.json
@@ -125,7 +125,7 @@ renderAssetTable=function(rows,tv,title,assetType){
 };
 
 function manage(){
-  return `<details class="mg" id="mg" ${mopen?"open":""}><summary>Add IBKR holdings and other assets</summary>
+  return `<details class="mg" id="mg" ${(mopen==null?!(H.length||IB.length||AS.length):mopen)?"open":""}><summary>Manage data: import holdings, add assets</summary>
 <div class="card"><b>Import IBKR holdings</b>
 <p class="s">IBKR: Performance &amp; Reports → Statements → Activity, format CSV (or a portfolio CSV with Symbol, Quantity, cost and close price). Uses the owner name in the Import holdings box above; importing again for the same name replaces it. Saved only in this browser.</p>
 <label class="btn">Choose CSV<input type="file" id="ifile" hidden></label>
@@ -179,7 +179,8 @@ function prepPrint(){
 addEventListener("beforeprint",prepPrint);
 addEventListener("afterprint",()=>{document.title=_title;document.querySelectorAll("details.sec").forEach(d=>{d.open=!!d.dataset.was});setTimeout(()=>{window.__pfp=false},200)});
 
-const _h=holdings,_b=bindHoldings;
+const _h=holdings,_b=bindHoldings,_sv=save;
+save=(...a)=>{_sv(...a);mopen=true};
 holdings=()=>`<div class="printonly" id="prhd"></div><div class="noprint" style="text-align:right"><button id="pdf">Export PDF</button></div>`+totalCard()+_h()+ibCard()+assetCard()+manage();
 bindHoldings=()=>{
   window.__pfp=false;
@@ -187,6 +188,10 @@ bindHoldings=()=>{
   const $=id=>document.getElementById(id);
   const zc=[...document.querySelectorAll("#v>.card")].filter(c=>{const t=((c.querySelector("b")||{}).textContent||"").trim();return /^Portfolio/.test(t)||t==="View by Asset Class"});
   if(zc.length){const d=document.createElement("details");d.className="sec";d.dataset.k="z";if(SO.z!==false)d.open=true;d.innerHTML="<summary>Zerodha holdings</summary>";zc[0].before(d);zc.forEach(c=>d.appendChild(c))}
+  const mg=$("mg"),cardByTitle=t=>[...document.querySelectorAll("#v>.card")].find(c=>((c.querySelector("b")||{}).textContent||"").trim()===t);
+  const ic=cardByTitle("Import holdings"),wc=cardByTitle("Worker address");
+  if(ic)mg.querySelector("summary").after(ic);   // Zerodha import first
+  if(wc)mg.appendChild(wc);                      // Worker address last
   document.querySelectorAll("details.sec").forEach(d=>d.ontoggle=()=>{if(window.__pfp)return;SO[d.dataset.k]=d.open;lsSet("mm_sections",SO)});
   const hf=$("hf");if(hf)hf.removeAttribute("accept");   // lets phones pick .json files
   $("mg").ontoggle=e=>{mopen=e.target.open};
