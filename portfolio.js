@@ -111,13 +111,56 @@ function manage(){
 }
 
 // ---------- Hook into the existing tab ----------
+// ---------- Export as PDF: the browser's print dialog ("Save as PDF"), styled by a print stylesheet ----------
+const st=document.createElement("style");
+st.textContent=`.printonly{display:none}
+@media print{
+@page{size:A4 landscape;margin:10mm}
+:root{--bg:#fff;--card:#fff;--tx:#111;--mut:#555;--bd:#ccc;--up:#137a43;--dn:#b3261e;--wa:#9a6700}
+*{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+body{padding:0;max-width:none;background:#fff;color:#111;font-size:11px}
+nav,#nav,#upd,button,label.btn,input,textarea,select,details.mg,.asset-filters,.collapsible-header .toggle,.noprint,.pf-hide{display:none!important}
+.printonly{display:block;margin-bottom:8px}
+.collapsible-content{display:block!important}
+.collapsible-header{background:none;border-bottom:1px solid #999;border-radius:0;padding:4px 0;margin-top:8px}
+.card{break-inside:auto;border-color:#ccc;margin-bottom:8px}
+.card:has(.bar){break-inside:avoid}
+.wrap{overflow:visible}
+table{min-width:0!important;width:100%;font-size:9.5px}
+th,td{padding:2px 4px}
+thead{display:table-header-group}
+tr{break-inside:avoid}
+.wrap td:first-child,.wrap th:first-child{position:static}
+}`;
+document.head.appendChild(st);
+let _title=document.title;
+function prepPrint(){
+  if((location.hash.slice(1)||"home").toLowerCase()!=="holdings")return;
+  const HIDE=["Import holdings","Worker address","Whose holdings"];
+  document.querySelectorAll("#v .card").forEach(c=>{const b=c.querySelector("b");if(b&&HIDE.includes(b.textContent.trim()))c.classList.add("pf-hide")});
+  document.querySelectorAll("#v table").forEach(t=>{if(!t.tHead&&t.rows[0])t.createTHead().appendChild(t.rows[0])});   // repeat header rows on every page
+  const d=new Date(),hd=document.getElementById("prhd");
+  if(hd)hd.innerHTML=`<b style="font-size:16px">Holdings report${who!=="All"?" · "+esc(who):""}</b><div class="mu">Generated ${d.toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})} · Zerodha prices are previous close · Not investment advice</div>`;
+  if(document.title.indexOf("Holdings report")<0)_title=document.title;
+  document.title="Holdings report "+today();
+}
+addEventListener("beforeprint",prepPrint);
+addEventListener("afterprint",()=>{document.title=_title});
+
 const _h=holdings,_b=bindHoldings;
-holdings=()=>totalCard()+_h()+ibCard()+assetCard()+manage();
+holdings=()=>`<div class="printonly" id="prhd"></div><div class="noprint" style="text-align:right"><button id="pdf">Export PDF</button></div>`+totalCard()+_h()+ibCard()+assetCard()+manage();
 bindHoldings=()=>{
   _b();
   const $=id=>document.getElementById(id);
   const hf=$("hf");if(hf)hf.removeAttribute("accept");   // lets phones pick .json files
   $("mg").ontoggle=e=>{mopen=e.target.open};
+  if($("pdf"))$("pdf").onclick=()=>{
+    const prev={...assetClassFilter};                    // full report: show Equities, Mutual Funds and Gold & Silver
+    assetClassFilter={eq:true,mf:true,gold:true};
+    show();
+    addEventListener("afterprint",()=>{assetClassFilter=prev;show()},{once:true});
+    setTimeout(()=>{prepPrint();window.print()},50);     // prepPrint also runs on "beforeprint"; calling it here covers browsers that skip that event
+  };
   $("ifile").onchange=e=>e.target.files[0]&&ibFile(e.target.files[0]);
   $("ipb").onclick=()=>{
     try{const t=$("ipaste").value;ibSave(ownerName(),parseIBKR(t.includes("\t")?t.split(/\r?\n/).map(l=>l.split("\t")):csvRows(t)))}
