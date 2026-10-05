@@ -32,3 +32,7 @@ details.how>summary{font-size:13px;color:var(--mut);font-weight:500}
 
 /* tables: keep the first column visible while scrolling sideways */
 .wrap td:first-child,.wrap th:first-child{position:sticky;left:0;background:var(--card)}
+
+/* collapsible sections for Zerodha, IBKR and Other assets */
+details.sec{margin-bottom:12px}
+details.sec>summary{cursor:pointer;font-weight:600;padding:12px 14px;border:1px solid var(--bd);border-radius:12px;background:var(--card);margin-bottom:12px}
