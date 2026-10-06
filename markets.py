@@ -212,6 +212,26 @@ def india_alerts(state):
     return out, new
 
 
+def track(alerts, state, today=None):
+    """Alerts stay listed while they hold; once cleared they stay visible for 7 days after clearing.
+    "new" = not active on the previous run; "date" = when the alert (re)started."""
+    today = today or date.today().isoformat()
+    prev = {a["key"]: a for a in state.get("events", [])}
+    was_active = {k for k, a in prev.items() if not a.get("cleared")}
+    for a in alerts:
+        p = prev.get(a["key"])
+        a["new"] = a["key"] not in was_active
+        a["date"] = p["date"] if p and not p.get("cleared") else today
+    events = list(alerts)
+    active = {a["key"] for a in alerts}
+    cutoff = (date.fromisoformat(today) - timedelta(days=7)).isoformat()
+    for k, a in prev.items():
+        cleared_on = a.get("clearedOn") or today
+        if k not in active and cleared_on >= cutoff:
+            events.append({**a, "new": False, "cleared": True, "clearedOn": cleared_on})
+    return events
+
+
 def main():
     errors, etfs, macro, alerts = [], [], [], []
     try:
@@ -264,26 +284,15 @@ def main():
     ia, india_state = india_alerts(state)
     alerts += ia
 
-    # keep alerts for 7 days; flag ones not seen on the previous run as new
-    today = date.today().isoformat()
-    prev_keys = {a["key"] for a in state.get("alerts", [])}
-    seen = {a["key"]: a for a in state.get("events", [])}
-    for a in alerts:
-        a["new"] = a["key"] not in prev_keys
-        a["date"] = seen.get(a["key"], {}).get("date", today)
-    events = [a for a in alerts]
-    cutoff = (date.today() - timedelta(days=7)).isoformat()
-    for k, a in seen.items():
-        if a["date"] >= cutoff and k not in {x["key"] for x in alerts}:
-            events.append({**a, "new": False, "cleared": True})
+    events = track(alerts, state)
 
     out = {"updated": datetime.now(timezone.utc).isoformat(timespec="minutes"),
            "etfs": etfs, "macro": macro, "ratio": ratio, "fed": fedinfo,
            "alerts": events, "errors": errors}
     json.dump(out, open("markets.json", "w"), separators=(",", ":"))
-    json.dump({"alerts": [{"key": a["key"], "date": a["date"]} for a in events],
-               "events": [{"key": a["key"], "date": a["date"], "text": a["text"], "kind": a["kind"]} for a in events],
-               "india": india_state}, open("state.json", "w"))
+    keep = ("key", "date", "text", "kind", "cleared", "clearedOn")
+    json.dump({"events": [{k: a[k] for k in keep if k in a} for a in events], "india": india_state},
+              open("state.json", "w"))
     print(f"etfs {len(etfs)}/{len(ETFS)}, macro {len(macro)}/{len(MACRO)}, alerts {len(alerts)}")
     for e in errors:
         print("ERROR", e)
