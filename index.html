@@ -374,8 +374,7 @@ function holdings(){
  <div class="m"><small>Earnings falling</small><b class="dn">${share(r=>/falling|risk/.test(r.m.label)).toFixed(0)}%</b></div>
  <div class="m"><small>Below 200-day</small><b>${share(r=>r.m.dma<0).toFixed(0)}%</b></div></div>
  <div class="leg">Equity figures cover the non-gold/silver part only. Equity PE = value-weighted (total value ÷ total earnings) over holdings with positive earnings. Analysis from ${A.at}. Missing data is shown as "—".</div>`;
- h+=`<div class="leg">${P.at&&Object.keys({...P.px,...P.nav}).length?"Prices updated "+new Date(P.at).toLocaleString("en-IN",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})+" (stocks and ETFs from Yahoo or the last NSE close, fund NAVs from AMFI). ":""}* = price from the imported file.</div>`;
- h+=`<button id="hpx">${W?"Refresh prices":"Add a Worker address to get live prices"}</button>`;
+ h+=`<div class="leg">LTP: stocks and ETFs from Yahoo or the last NSE close, fund NAVs from AMFI (use Refresh prices at the top). * = price from the imported file.</div>`;
  h+=`<button id="han">${Object.keys(A).length>1?"Refresh analysis":"Analyse PE and EPS growth"}</button></div>`;
  h+=`<div class="card"><b>View by Asset Class</b>
  <div class="asset-filters">
