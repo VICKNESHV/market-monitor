@@ -149,7 +149,7 @@ renderAssetTable=function(rows,tv,title,assetType){
     const peChgCell=isEq?(m&&m.peChg!=null?f(m.peChg):"—"):"";
     const p1yCell=isEq?(m&&m.price1y!=null?f(m.price1y):"—"):"";
     const dmaCell=isEq?(m&&m.dma!=null?f(m.dma):"—"):"";
-    return `<tr><td><b>${r.sym}</b></td><td>${r.qty}</td><td>${inr(r.inv/r.qty)}</td><td>${inr(r.ltp)}</td><td>${inr(r.val)}</td><td class="${cl(r.val-r.inv)}">${inr(r.val-r.inv)}</td><td class="${cl(r.val-r.inv)}">${f(r.inv?(r.val/r.inv-1)*100:null)}</td><td>${(r.val/tv*100).toFixed(1)}%</td>
+    return `<tr><td><b>${r.sym}</b></td><td>${r.qty}</td><td>${inr2(r.inv/r.qty)}</td><td>${inr2(r.ltp)}${fileMark(r)}</td><td>${inr(r.val)}</td><td class="${cl(r.val-r.inv)}">${inr(r.val-r.inv)}</td><td class="${cl(r.val-r.inv)}">${f(r.inv?(r.val/r.inv-1)*100:null)}</td><td>${(r.val/tv*100).toFixed(1)}%</td>
  ${isEq?`<td>${peCell}</td><td class="${cl(m&&m.epsG)}">${epsCell}</td><td class="${cl(m&&m.peChg)}">${peChgCell}</td><td class="${cl(m&&m.price1y)}">${p1yCell}</td><td class="${cl(m&&m.dma)}">${dmaCell}</td>`:""}<td class="${c}">${m?m.label:"—"}</td></tr>`;}).join("");
   const isOpen=!collapsedSections[assetType];
   return `<div class="table-section"><div class="collapsible-header ${isOpen?"open":""}" data-section="${assetType}">
