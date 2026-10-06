@@ -30,10 +30,11 @@ The page has five tabs:
 - **Analyse PE and EPS growth** fetches price history and reported EPS for each Zerodha equity and shows PE, EPS growth, PE change, 1-year price change and position versus the 200-day average.
 - **Owners**: import holdings under different owner names (e.g. Me, Father) and switch between them or view all.
 - **Export PDF** prints a landscape report of all sections.
+- **Backup** (under Manage data): **Download backup** saves all holdings, assets and settings in one JSON file; **Restore backup** loads it. Browsers keep this data separately for each web address, so use it to move to another browser, device or address.
 
 ### The Cloudflare Worker (`worker.js`)
 
-Live prices and the PE analysis go through a small Cloudflare Worker, because the price sources don't allow browser requests from other sites. The page sends only symbols (and ISINs), never quantities or values. The Worker only answers requests from the live page's address (`ORIGIN` at the top of the file).
+Live prices and the PE analysis go through a small Cloudflare Worker, because the price sources don't allow browser requests from other sites. The page sends only symbols (and ISINs), never quantities or values. The Worker only answers requests from the page's addresses (`ORIGINS` at the top of the file).
 
 | Request | Returns | Cached |
 | --- | --- | --- |
