@@ -111,6 +111,7 @@ let ibBusy=false;
 async function refreshIB(){
   if(!W||ibBusy||!IB.length)return;
   ibBusy=true;
+  if(imsg.startsWith("IBKR price"))imsg="";
   const keys=[...new Set(IB.map(x=>x.sym+":"+x.ccy))],got={};
   try{
     for(let i=0;i<keys.length;i+=10){
@@ -240,7 +241,15 @@ addEventListener("afterprint",()=>{document.title=_title;document.querySelectorA
 
 const _h=holdings,_b=bindHoldings,_sv=save;
 save=(...a)=>{_sv(...a);mopen=true};
-holdings=()=>`<div class="printonly" id="prhd"></div><div class="noprint" style="text-align:right"><button id="pdf">Export PDF</button></div>`+totalCard()+_h()+ibCard()+assetCard()+manage();
+// Price refresh covers Zerodha, IBKR and physical gold, so it sits at the top of the tab with its status.
+const pxBar=()=>{
+  const busy=/^(Updating prices|Prices updated|Price update failed)/.test(hmsg)?hmsg:"";
+  const at=P.at?"Prices as of "+new Date(P.at).toLocaleString("en-IN",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}):"";
+  const st=W?(busy||at):"Add a Worker address (Manage data) to get live prices";
+  return `<div class="noprint" style="display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap">
+<span class="mu" style="font-size:13px">${esc(st)}${imsg.startsWith("IBKR price")?` · <span class="wa">${esc(imsg)}</span>`:""}</span>
+${W?`<button id="hpx">Refresh prices</button>`:""}<button id="pdf">Export PDF</button></div>`};
+holdings=()=>`<div class="printonly" id="prhd"></div>`+pxBar()+totalCard()+_h()+ibCard()+assetCard()+manage();
 // ---------- Click a column header to sort a Holdings table; click again to reverse ----------
 // The order is remembered per table (Zerodha equities/funds/gold, IBKR, other assets) across redraws.
 const SORT=ls.get("mm_sort")||{};
