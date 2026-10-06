@@ -124,6 +124,15 @@ async function refreshIB(){
 }
 const _rp=refreshPrices;
 refreshPrices=async()=>{await _rp();await refreshIB();show()};
+// While Holdings is open and visible, refresh once prices are 15 minutes old (checked every minute and when you come back
+// to the tab). Skipped while you are typing in a form, since a refresh redraws the page.
+const autoRefresh=()=>{
+  const typing=/^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement||{}).tagName);
+  if(W&&!pxBusy&&!typing&&document.visibilityState==="visible"&&(location.hash.slice(1)||"home").toLowerCase()==="holdings"
+    &&!(Date.now()-new Date(P.at||0)<15*60e3))refreshPrices();
+};
+setInterval(autoRefresh,60e3);
+document.addEventListener("visibilitychange",autoRefresh);
 function ibCard(){
   const by={};
   for(const x of IB.filter(x=>mine(x.owner))){
@@ -141,7 +150,7 @@ function ibCard(){
 <div class="leg">Summary figures are in ₹. Cost is converted at today's rate, so currency gains or losses since purchase are not included in P&amp;L. Table prices are in each position's own currency, from Yahoo on the exchange matching that currency (hover a symbol to see which); * = price from the imported statement.</div>
 ${miss.length?`<div class="wa" style="font-size:13px;margin-top:8px">No ₹ rate for ${miss.map(esc).join(", ")}. Enter ₹ per 1 unit:</div>${miss.map(c=>`<input type="text" class="fxin" data-c="${esc(c)}" placeholder="INR per ${esc(c)}" style="margin-top:6px">`).join("")}<button id="fxs">Save rates</button>`:""}</div>
 <div class="card"><div class="wrap"><table style="min-width:840px"><tr><th>Symbol</th><th>Ccy</th><th>Qty</th><th>Avg</th><th>LTP</th><th>Value</th><th>P&amp;L</th><th>P&amp;L %</th><th>Weight</th><th style="text-align:right">Value (₹)</th></tr>`+
-  rows.map(r=>`<tr><td><b${r.live?` title="Yahoo ${esc(r.live.y)}"`:""}>${esc(r.sym)}</b></td><td>${esc(r.ccy)}</td><td>${r.qty}</td><td>${nf(r.inv/r.qty)}</td><td>${nf(r.ltp)}${r.live?"":` <span class="mu" title="Price from the imported statement">*</span>`}</td><td>${nf(r.val)}</td><td class="${cl(r.val-r.inv)}">${nf(r.val-r.inv)}</td><td class="${cl(r.val-r.inv)}">${f(r.inv?(r.val/r.inv-1)*100:null)}</td><td>${r.inrV&&tv?(r.inrV/tv*100).toFixed(1)+"%":"—"}</td><td style="text-align:right">${r.inrV==null?"—":inr(r.inrV)}</td></tr>`).join("")+`</table></div></div>`;
+  rows.map(r=>`<tr><td><b${r.live?` title="Yahoo ${esc(r.live.y)}"`:""}>${esc(r.sym)}</b></td><td>${esc(r.ccy)}</td><td>${r.qty}</td><td>${nf(r.inv/r.qty)}</td>${(s=>`<td class="pxsrc" data-src="${esc(s)}" title="${esc(s)}">`)(r.live?`Yahoo ${r.live.y}`+(r.live.time?" · "+when(r.live.time):""):"Price from the imported statement")}${nf(r.ltp)}${r.live?"":` <span class="mu">*</span>`}</td><td>${nf(r.val)}</td><td class="${cl(r.val-r.inv)}">${nf(r.val-r.inv)}</td><td class="${cl(r.val-r.inv)}">${f(r.inv?(r.val/r.inv-1)*100:null)}</td><td>${r.inrV&&tv?(r.inrV/tv*100).toFixed(1)+"%":"—"}</td><td style="text-align:right">${r.inrV==null?"—":inr(r.inrV)}</td></tr>`).join("")+`</table></div></div>`;
   return sec("i",`IBKR holdings (${rows.length})`,body);
 }
 function assetCard(){
@@ -176,7 +185,7 @@ renderAssetTable=function(rows,tv,title,assetType){
     const peChgCell=isEq?(m&&m.peChg!=null?f(m.peChg):"—"):"";
     const p1yCell=isEq?(m&&m.price1y!=null?f(m.price1y):"—"):"";
     const dmaCell=isEq?(m&&m.dma!=null?f(m.dma):"—"):"";
-    return `<tr><td>${symCell(r)}</td><td>${r.qty}</td><td>${inr2(r.inv/r.qty)}</td><td>${inr2(r.ltp)}${fileMark(r)}</td><td>${inr(r.val)}</td><td class="${cl(r.val-r.inv)}">${inr(r.val-r.inv)}</td><td class="${cl(r.val-r.inv)}">${f(r.inv?(r.val/r.inv-1)*100:null)}</td><td>${(r.val/tv*100).toFixed(1)}%</td>
+    return `<tr><td>${symCell(r)}</td><td>${r.qty}</td><td>${inr2(r.inv/r.qty)}</td><td class="pxsrc" data-src="${esc(r.src||"")}" title="${esc(r.src||"")}">${inr2(r.ltp)}${fileMark(r)}</td><td>${inr(r.val)}</td><td class="${cl(r.val-r.inv)}">${inr(r.val-r.inv)}</td><td class="${cl(r.val-r.inv)}">${f(r.inv?(r.val/r.inv-1)*100:null)}</td><td>${(r.val/tv*100).toFixed(1)}%</td>
  ${isEq?`<td>${peCell}</td><td class="${cl(m&&m.epsG)}">${epsCell}</td><td class="${cl(m&&m.peChg)}">${peChgCell}</td><td class="${cl(m&&m.price1y)}">${p1yCell}</td><td class="${cl(m&&m.dma)}">${dmaCell}</td>`:""}<td class="${c}">${m?m.label:"—"}</td></tr>`;}).join("");
   const isOpen=!collapsedSections[assetType];
   return `<div class="table-section"><div class="collapsible-header ${isOpen?"open":""}" data-section="${assetType}">
@@ -253,7 +262,7 @@ holdings=()=>`<div class="printonly" id="prhd"></div>`+pxBar()+totalCard()+_h()+
 // ---------- Click a column header to sort a Holdings table; click again to reverse ----------
 // The order is remembered per table (Zerodha equities/funds/gold, IBKR, other assets) across redraws.
 const SORT=ls.get("mm_sort")||{};
-const cellVal=td=>{const t=td.textContent.replace(/[₹,%*+\s]/g,"");return /^-?\d+(\.\d+)?$/.test(t)?parseFloat(t):td.textContent.trim().toLowerCase()};   // "₹1,400.50 *" → 1400.5, "4GLD" stays text
+const cellVal=td=>{const t=[...td.childNodes].filter(n=>!(n.classList&&n.classList.contains("srcl"))).map(n=>n.textContent).join("").replace(/[₹,%*+\s]/g,"");return /^-?\d+(\.\d+)?$/.test(t)?parseFloat(t):td.textContent.trim().toLowerCase()};   // "₹1,400.50 *" → 1400.5, "4GLD" stays text
 function sortTables(){
   document.querySelectorAll("#v table").forEach(t=>{
     const head=t.rows[0];if(!head||!head.cells[0]||head.cells[0].tagName!=="TH")return;
@@ -330,6 +339,9 @@ bindHoldings=()=>{
     AS=AS.filter(a=>a.id!==b.dataset.i);lsSet("mm_assets",AS);show();
   });
   sortTables();
+  // Tap an LTP to show its source and time (hover tooltips don't exist on phones)
+  document.querySelectorAll("#v td.pxsrc").forEach(td=>td.onclick=()=>{const o=td.querySelector(".srcl");
+    if(o)o.remove();else if(td.dataset.src)td.insertAdjacentHTML("beforeend",`<div class="srcl mu" style="font-size:11px;white-space:nowrap">${esc(td.dataset.src)}</div>`)});
 };
 // redraw if the page rendered before this script loaded
 if(document.getElementById("v").innerHTML)show();
