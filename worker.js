@@ -45,9 +45,12 @@ async function one(sym) {
   return res;
 }
 
+// Zerodha adds the NSE series to some symbols (SGBAUG28V-GB, GOLDBEES-EQ); prices are listed under the bare symbol.
+const bare = sym => sym.replace(/-[A-Z][A-Z0-9]$/, "");
+
 // Latest traded price only, cached briefly so the Holdings page shows near-live values.
 async function ltp(sym) {
-  const r = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym + ".NS")}?range=1d&interval=1d`,
+  const r = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(bare(sym) + ".NS")}?range=1d&interval=1d`,
     { headers: UA, cf: { cacheTtl: 300, cacheEverything: true } });   // 5 minutes
   if (!r.ok) throw new Error("HTTP " + r.status);
   const m = (await r.json()).chart.result[0].meta;
@@ -86,7 +89,7 @@ async function bhav(syms) {
     if (!r.ok) continue;
     const text = "\n" + await r.text(), out = {};
     for (const s of syms) {
-      const i = text.indexOf("\n" + s + ",");
+      const i = text.indexOf("\n" + bare(s) + ",");
       if (i < 0) continue;
       const f = text.slice(i + 1, text.indexOf("\n", i + 1)).split(",").map(x => x.trim());
       const close = parseFloat(f[8]);
