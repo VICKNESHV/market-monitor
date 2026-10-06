@@ -266,11 +266,13 @@ function metrics(r){
 }
 // Where a holding's live price came from and when, e.g. "Yahoo · 6 Oct, 05:35 pm", "NSE close · 06-Oct-2026", "AMFI NAV · 06-Oct-2026"
 const when=t=>new Date(t*1000).toLocaleString("en-IN",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"});
-const pxSrc=x=>{const n=x.isin&&P.nav&&P.nav[x.isin];if(n&&n.ltp>0)return "AMFI NAV"+(n.date?" · "+n.date:"");
+// NAVs apply only to mutual funds: stocks and ETFs also carry ISINs but are valued at their market price
+const navOf=x=>x.isMutualFund&&x.isin&&P.nav?P.nav[x.isin]:null;
+const pxSrc=x=>{const n=navOf(x);if(n&&n.ltp>0)return "AMFI NAV"+(n.date?" · "+n.date:"");
  const l=P.px&&P.px[x.sym];if(!(l&&l.ltp>0))return "Price from the imported file";
  return l.time?"Yahoo · "+when(l.time):"NSE close"+(l.date?" · "+l.date:"")};
 // Latest price: fund NAV by ISIN or stock/ETF LTP from the Worker, else the price in the imported file
-const livePx=x=>{const l=(x.isin&&P.nav&&P.nav[x.isin])||(P.px&&P.px[x.sym]);return l&&l.ltp>0?l:null};
+const livePx=x=>{const l=navOf(x)||(P.px&&P.px[x.sym]);return l&&l.ltp>0?l:null};
 const px=x=>{const l=livePx(x);return l?l.ltp:x.ltp};
 // Prices are due for a refresh 15 minutes after the last successful one, or after the last attempt if it failed
 const pxStale=()=>Date.now()-Math.max(+new Date(P.at||0),pxTry)>=15*60e3;
@@ -290,7 +292,7 @@ async function refreshPrices(){
    for(const[k,v]of Object.entries(d.px))if(v.ltp>0)np[k]=v;
    Object.assign(nn,d.nav||{});if(d.gold)gd=d.gold;
   }
-  P={...P,at:new Date().toISOString(),px:{...(P.px||{}),...np},nav:{...(P.nav||{}),...nn},gold:gd||P.gold};lsSet("mm_prices",P);
+  P={...P,at:new Date().toISOString(),px:{...(P.px||{}),...np},nav:Object.fromEntries(isins.map(i=>[i,nn[i]||(P.nav||{})[i]]).filter(e=>e[1])),gold:gd||P.gold};lsSet("mm_prices",P);
   // name what got no price this time; those keep the last price fetched (or the imported one, marked *)
   const fund=i=>fundName((H.find(h=>h.isin===i)||{}).sym||i);
   const miss=[...syms.filter(s=>!np[s]),...isins.filter(i=>!nn[i]).map(fund)],want=syms.length+isins.length;
