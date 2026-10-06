@@ -66,7 +66,9 @@ function calc(a){
     const n={Annual:1,Quarterly:4,Monthly:12}[a.comp],y=yrs(a.date);
     return {inv:a.buy,val:n?a.buy*Math.pow(1+a.rate/100/n,n*y):a.buy*(1+a.rate/100*y),det:`${a.rate}% p.a. · ${String(a.comp).toLowerCase()}`};
   }
-  if(a.kind==="gold"){const g=a.grams*a.units;return {inv:g*a.buyp,val:g*a.curp,det:`${a.carat}K · ${a.grams} g × ${a.units} · ₹${nf(a.curp)}/g`}}
+  if(a.kind==="gold"){   // IBJA rate for this purity when the Worker has fetched one, else the price typed in (or the buy price)
+    const g=a.grams*a.units,live=P.gold&&P.gold[a.carat],cp=live||a.curp||a.buyp;
+    return {inv:g*a.buyp,val:g*cp,det:`${a.carat}K · ${a.grams} g × ${a.units} · ₹${nf(cp)}/g ${live?"(IBJA)":"(entered)"}`}}
   if(a.kind==="re"){const q=a.area*a.units;return {inv:q*a.buyp,val:q*a.curp,det:`${nf(q)} sq ft · ₹${nf(a.curp)}/sq ft`}}
   if(a.kind==="gen")return {inv:a.units*a.buyp,val:a.units*a.curp,det:`${a.units} × ₹${nf(a.curp)}`};
   return {inv:null,val:a.value||0,det:"manual value"};   // assets saved before categories existed
@@ -75,7 +77,7 @@ const lab=(t,id,ph,type)=>`<label class="s" style="display:block;margin:8px 0 2p
 const sel=(t,id,opts)=>`<label class="s" style="display:block;margin:8px 0 2px">${t}</label><select id="${id}" ${sty}>${opts.map(o=>`<option>${o}</option>`).join("")}</select>`;
 function fields(k){
   if(k==="fi")return lab("Amount invested (₹)","abuy","e.g. 150000")+lab("Buy date","adate","","date")+lab("Interest rate (% a year)","arate","e.g. 7.1")+sel("Interest is added","acomp",["Annual","Quarterly","Monthly","Simple"]);
-  if(k==="gold")return lab("Grams per unit","agrams","e.g. 10")+sel("Purity","acarat",["22","24"])+lab("Number of units","aunits","1")+lab("Buy price per gram (₹)","abuyp")+lab("Current price per gram (₹, for this purity)","acurp")+lab("Buy date (optional)","adate","","date");
+  if(k==="gold")return lab("Grams per unit","agrams","e.g. 10")+sel("Purity","acarat",["22","24"])+lab("Number of units","aunits","1")+lab("Buy price per gram (₹)","abuyp")+lab("Current price per gram (₹, optional: updates from IBJA when the Worker is set)","acurp")+lab("Buy date (optional)","adate","","date");
   if(k==="re")return lab("Area per unit (sq ft)","aarea","e.g. 1200")+lab("Number of units","aunits","1")+lab("Buy price per sq ft (₹)","abuyp")+lab("Current price per sq ft (₹)","acurp")+lab("Buy date (optional)","adate","","date");
   return lab("Number of units","aunits","1")+lab("Buy price per unit (₹)","abuyp")+lab("Current price per unit (₹)","acurp")+lab("Buy date (optional)","adate","","date");
 }
@@ -97,7 +99,7 @@ function totalCard(){
 <div style="margin:8px 0 10px"><b style="font-size:26px">${cr(tv)}</b>${cr(tv)!==full?` <span class="mu" style="font-size:13px">${full}</span>`:""}</div>
 <div class="bar" style="height:14px">${cls.map(([n,v],i)=>`<i title="${esc(n)}" style="width:${Math.max(0,v/tv*100)}%;background:${COL[i%COL.length]}"></i>`).join("")}</div>`+
   cls.map(([n,v],i)=>`<div class="top" style="margin-top:8px"><span><span class="dot" style="background:${COL[i%COL.length]}"></span>${esc(n)}</span><span><b>${inr(v)}</b> <span class="mu">${(v/tv*100).toFixed(1)}%</span></span></div>`).join("")+
-  `<div class="leg">Zerodha = quantity × latest price from the Worker (funds at AMFI NAV), or the imported price where none is available. IBKR converted to ₹ at the latest USD/INR and EUR/USD from the Markets data, or rates you entered. Other assets are values you typed in. Gold in all forms (ETFs and physical): ${(gold/tv*100).toFixed(1)}%.${noRate.length?` <span class="wa">Excluded until a rate is entered: ${noRate.map(esc).join(", ")}.</span>`:""}</div></div>`;
+  `<div class="leg">Zerodha = quantity × latest price from the Worker (funds at AMFI NAV), or the imported price where none is available. IBKR converted to ₹ at the latest USD/INR and EUR/USD from the Markets data, or rates you entered. Physical gold uses IBJA's daily rate per gram for its purity when available; other assets are values you typed in. Gold in all forms (ETFs and physical): ${(gold/tv*100).toFixed(1)}%.${noRate.length?` <span class="wa">Excluded until a rate is entered: ${noRate.map(esc).join(", ")}.</span>`:""}</div></div>`;
 }
 const SO=ls.get("mm_sections")||{};
 const sec=(k,title,body)=>`<details class="sec" data-k="${k}" ${SO[k]===false?"":"open"}><summary>${title}</summary>${body}</details>`;
@@ -258,7 +260,7 @@ bindHoldings=()=>{
     const a={id:Date.now()+"",owner:ownerName(),type:t,kind:k,name:$("aname").value.trim(),date:g("adate"),updated:today()};
     let ok=!!a.name;
     if(k==="fi"){a.buy=N("abuy");a.rate=N("arate");a.comp=g("acomp");ok=ok&&pos(a.buy)&&a.rate!=null&&a.rate>=0&&!!a.date}
-    else{a.units=N("aunits")||1;a.buyp=N("abuyp");a.curp=N("acurp");ok=ok&&pos(a.units)&&pos(a.buyp)&&pos(a.curp);
+    else{a.units=N("aunits")||1;a.buyp=N("abuyp");a.curp=N("acurp");ok=ok&&pos(a.units)&&pos(a.buyp)&&(pos(a.curp)||k==="gold");
       if(k==="gold"){a.grams=N("agrams");a.carat=g("acarat");ok=ok&&pos(a.grams)}
       if(k==="re"){a.area=N("aarea");ok=ok&&pos(a.area)}}
     if(!ok){amsg=k==="fi"?"Enter a name, amount, buy date and interest rate.":"Enter a name and all the numbers (buy and current price must be above 0).";return show()}
