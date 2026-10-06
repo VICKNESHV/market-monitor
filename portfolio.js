@@ -89,7 +89,7 @@ function totalCard(){
   const zm=sum(z.filter(x=>!isGold(x.sym)&&x.isMutualFund).map(val));
   const ze=sum(z.filter(x=>!isGold(x.sym)&&!x.isMutualFund).map(val));
   const L=IB.filter(x=>mine(x.owner)),noRate=[...new Set(L.filter(x=>!rate(x.ccy)).map(x=>x.ccy))];
-  const ibv=sum(L.map(x=>{const r=rate(x.ccy);return r?x.qty*x.ltp*r:0}));
+  const ibv=sum(L.map(x=>{const r=rate(x.ccy);return r?x.qty*ibPx(x)*r:0}));
   const A2=AS.filter(x=>mine(x.owner)),bt=t=>sum(A2.filter(x=>x.type===t).map(x=>calc(x).val));
   const cls=[["Zerodha equities",ze],["Zerodha mutual funds",zm],["Zerodha gold & silver",zg],["IBKR (in ₹)",ibv],...TYPES.map(t=>[t,bt(t)])].filter(c=>c[1]);
   const tv=sum(cls.map(c=>c[1]));
@@ -104,11 +104,30 @@ function totalCard(){
 const SO=ls.get("mm_sections")||{};
 const sec=(k,title,body)=>`<details class="sec" data-k="${k}" ${SO[k]===false?"":"open"}><summary>${title}</summary>${body}</details>`;
 const nf=x=>x==null?"—":x.toLocaleString("en-US",{maximumFractionDigits:2});
+// Latest IBKR prices from the Worker (P.ib, keyed "SYM|CCY"), else the price in the imported statement
+const ibLive=x=>{const l=P.ib&&P.ib[x.sym+"|"+x.ccy];return l&&l.ltp>0?l:null};
+const ibPx=x=>{const l=ibLive(x);return l?l.ltp:x.ltp};
+let ibBusy=false;
+async function refreshIB(){
+  if(!W||ibBusy||!IB.length)return;
+  ibBusy=true;
+  const keys=[...new Set(IB.map(x=>x.sym+":"+x.ccy))],got={};
+  try{
+    for(let i=0;i<keys.length;i+=10){
+      const r=await fetch(W+(W.includes("?")?"&":"?")+"ib="+encodeURIComponent(keys.slice(i,i+10).join(",")));
+      if(!r.ok)throw new Error("HTTP "+r.status);
+      for(const[k,v]of Object.entries((await r.json()).ib||{}))if(v.ltp>0)got[k]=v;
+    }
+  }catch(e){imsg="IBKR price update failed: "+e.message}
+  P={...P,ib:{...(P.ib||{}),...got}};lsSet("mm_prices",P);ibBusy=false;
+}
+const _rp=refreshPrices;
+refreshPrices=async()=>{await _rp();await refreshIB();show()};
 function ibCard(){
   const by={};
   for(const x of IB.filter(x=>mine(x.owner))){
-    const k=x.sym+"|"+x.ccy,r=by[k]||(by[k]={sym:x.sym,ccy:x.ccy,qty:0,inv:0,val:0,ltp:x.ltp});
-    r.qty+=x.qty;r.inv+=x.qty*x.avg;r.val+=x.qty*x.ltp;r.ltp=x.ltp;
+    const p=ibPx(x),k=x.sym+"|"+x.ccy,r=by[k]||(by[k]={sym:x.sym,ccy:x.ccy,qty:0,inv:0,val:0,ltp:p});
+    r.qty+=x.qty;r.inv+=x.qty*x.avg;r.val+=x.qty*p;r.ltp=p;r.live=ibLive(x);
   }
   const rows=Object.values(by).map(r=>{const fx=rate(r.ccy);return {...r,fx,inrV:fx?r.val*fx:null,inrI:fx?r.inv*fx:null}}).sort((a,b)=>(b.inrV||0)-(a.inrV||0));
   if(!rows.length)return "";
@@ -118,10 +137,10 @@ function ibCard(){
 <div class="m"><small>Invested</small><b>${inr(ti)}</b></div><div class="m"><small>Value</small><b>${inr(tv)}</b></div>
 <div class="m"><small>P&amp;L</small><b class="${cl(pl)}">${inr(pl)} (${f(ti?pl/ti*100:null)})</b></div>
 <div class="m"><small>Holdings</small><b>${rows.length}</b></div><div class="m"><small>Top 5 weight</small><b>${top5.toFixed(0)}%</b></div></div>
-<div class="leg">Summary figures are in ₹. Cost is converted at today's rate, so currency gains or losses since purchase are not included in P&amp;L. Table prices are in each position's own currency.</div>
+<div class="leg">Summary figures are in ₹. Cost is converted at today's rate, so currency gains or losses since purchase are not included in P&amp;L. Table prices are in each position's own currency, from Yahoo on the exchange matching that currency (hover a symbol to see which); * = price from the imported statement.</div>
 ${miss.length?`<div class="wa" style="font-size:13px;margin-top:8px">No ₹ rate for ${miss.map(esc).join(", ")}. Enter ₹ per 1 unit:</div>${miss.map(c=>`<input type="text" class="fxin" data-c="${esc(c)}" placeholder="INR per ${esc(c)}" style="margin-top:6px">`).join("")}<button id="fxs">Save rates</button>`:""}</div>
 <div class="card"><div class="wrap"><table style="min-width:840px"><tr><th>Symbol</th><th>Ccy</th><th>Qty</th><th>Avg</th><th>LTP</th><th>Value</th><th>P&amp;L</th><th>P&amp;L %</th><th>Weight</th><th style="text-align:right">Value (₹)</th></tr>`+
-  rows.map(r=>`<tr><td><b>${esc(r.sym)}</b></td><td>${esc(r.ccy)}</td><td>${r.qty}</td><td>${nf(r.inv/r.qty)}</td><td>${nf(r.ltp)}</td><td>${nf(r.val)}</td><td class="${cl(r.val-r.inv)}">${nf(r.val-r.inv)}</td><td class="${cl(r.val-r.inv)}">${f(r.inv?(r.val/r.inv-1)*100:null)}</td><td>${r.inrV&&tv?(r.inrV/tv*100).toFixed(1)+"%":"—"}</td><td style="text-align:right">${r.inrV==null?"—":inr(r.inrV)}</td></tr>`).join("")+`</table></div></div>`;
+  rows.map(r=>`<tr><td><b${r.live?` title="Yahoo ${esc(r.live.y)}"`:""}>${esc(r.sym)}</b></td><td>${esc(r.ccy)}</td><td>${r.qty}</td><td>${nf(r.inv/r.qty)}</td><td>${nf(r.ltp)}${r.live?"":` <span class="mu" title="Price from the imported statement">*</span>`}</td><td>${nf(r.val)}</td><td class="${cl(r.val-r.inv)}">${nf(r.val-r.inv)}</td><td class="${cl(r.val-r.inv)}">${f(r.inv?(r.val/r.inv-1)*100:null)}</td><td>${r.inrV&&tv?(r.inrV/tv*100).toFixed(1)+"%":"—"}</td><td style="text-align:right">${r.inrV==null?"—":inr(r.inrV)}</td></tr>`).join("")+`</table></div></div>`;
   return sec("i",`IBKR holdings (${rows.length})`,body);
 }
 function assetCard(){
