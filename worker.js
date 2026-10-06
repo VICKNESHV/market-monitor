@@ -2,6 +2,7 @@
 // The page sends only stock symbols: GET /?s=INFY,TCS,M%26M
 // Latest prices only: GET /?ltp=INFY,GOLDBEES,SGBAUG28V&isin=INF179K01VQ4
 // (stocks/ETFs from Yahoo, else NSE's last close, e.g. for gold bonds; fund NAVs from AMFI)
+// Add &gold=1 for IBJA gold rates per gram by purity.
 const ORIGIN = "https://vickneshv.github.io";   // only your site may call this from a browser
 const UA = { "User-Agent": "Mozilla/5.0" };
 const CACHE = { cf: { cacheTtl: 21600, cacheEverything: true } };   // 6 hours
@@ -100,6 +101,19 @@ async function bhav(syms) {
   throw new Error("no NSE bhavcopy in the last 7 days");
 }
 
+// Indian gold rates per gram by purity (24K = 999, 22K = 916, 18K = 750) from IBJA, the benchmark jewellers and RBI use.
+async function gold() {
+  const r = await fetch("https://ibjarates.com/", { headers: UA, cf: { cacheTtl: 3600, cacheEverything: true } });
+  if (!r.ok) throw new Error("IBJA HTTP " + r.status);
+  const html = await r.text(), out = {};
+  for (const [k, id] of [["24", "999"], ["22", "916"], ["18", "750"]]) {
+    const m = html.match(new RegExp(`id="GoldRatesCompare${id}">\\s*([\\d.,]+)`));
+    if (m) out[k] = parseFloat(m[1].replace(/,/g, ""));
+  }
+  if (!(out["24"] > 0)) throw new Error("IBJA rates not found");
+  return out;
+}
+
 async function live(params) {
   const list = k => (params.get(k) || "").split(",").map(s => s.trim()).filter(Boolean);
   const out = { px: {}, nav: {}, error: null };
@@ -110,6 +124,7 @@ async function live(params) {
   if (missing.length) try { Object.assign(out.px, await bhav(missing)); } catch (e) { out.error = e.message; }
   const isins = list("isin").slice(0, 200);
   if (isins.length) try { out.nav = await navs(isins); } catch (e) { out.error = e.message; }
+  if (params.has("gold")) try { out.gold = await gold(); } catch (e) { out.error = e.message; }
   return out;
 }
 
