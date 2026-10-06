@@ -99,7 +99,7 @@ function totalCard(){
 <div style="margin:8px 0 10px"><b style="font-size:26px">${cr(tv)}</b>${cr(tv)!==full?` <span class="mu" style="font-size:13px">${full}</span>`:""}</div>
 <div class="bar" style="height:14px">${cls.map(([n,v],i)=>`<i title="${esc(n)}" style="width:${Math.max(0,v/tv*100)}%;background:${COL[i%COL.length]}"></i>`).join("")}</div>`+
   cls.map(([n,v],i)=>`<div class="top" style="margin-top:8px"><span><span class="dot" style="background:${COL[i%COL.length]}"></span>${esc(n)}</span><span><b>${inr(v)}</b> <span class="mu">${(v/tv*100).toFixed(1)}%</span></span></div>`).join("")+
-  `<div class="leg">Zerodha = quantity × latest price from the Worker (funds at AMFI NAV), or the imported price where none is available. IBKR converted to ₹ at the latest USD/INR and EUR/USD from the Markets data, or rates you entered. Physical gold uses IBJA's daily rate per gram for its purity when available; other assets are values you typed in. Gold in all forms (ETFs and physical): ${(gold/tv*100).toFixed(1)}%.${noRate.length?` <span class="wa">Excluded until a rate is entered: ${noRate.map(esc).join(", ")}.</span>`:""}</div></div>`;
+  `<div class="leg">Zerodha = quantity × latest price from the Worker (funds at AMFI NAV), or the imported price where none is available. IBKR converted to ₹ at the latest USD/INR and EUR/USD from the Markets data, or rates you entered. Physical gold uses IBJA's daily rate per gram for its purity when available; other assets are values you typed in. Gold &amp; silver in all forms (ETFs, funds, bonds and physical gold): ${(gold/tv*100).toFixed(1)}%.${noRate.length?` <span class="wa">Excluded until a rate is entered: ${noRate.map(esc).join(", ")}.</span>`:""}</div></div>`;
 }
 const SO=ls.get("mm_sections")||{};
 const sec=(k,title,body)=>`<details class="sec" data-k="${k}" ${SO[k]===false?"":"open"}><summary>${title}</summary>${body}</details>`;
@@ -129,7 +129,7 @@ refreshPrices=async()=>{await _rp();await refreshIB();show()};
 const autoRefresh=()=>{
   const typing=/^(INPUT|TEXTAREA|SELECT)$/.test((document.activeElement||{}).tagName);
   if(W&&!pxBusy&&!typing&&document.visibilityState==="visible"&&(location.hash.slice(1)||"home").toLowerCase()==="holdings"
-    &&!(Date.now()-new Date(P.at||0)<15*60e3))refreshPrices();
+    &&pxStale())refreshPrices();
 };
 setInterval(autoRefresh,60e3);
 document.addEventListener("visibilitychange",autoRefresh);
@@ -147,10 +147,10 @@ function ibCard(){
 <div class="m"><small>Invested</small><b>${inr(ti)}</b></div><div class="m"><small>Value</small><b>${inr(tv)}</b></div>
 <div class="m"><small>P&amp;L</small><b class="${cl(pl)}">${inr(pl)} (${f(ti?pl/ti*100:null)})</b></div>
 <div class="m"><small>Holdings</small><b>${rows.length}</b></div><div class="m"><small>Top 5 weight</small><b>${top5.toFixed(0)}%</b></div></div>
-<div class="leg">Summary figures are in ₹. Cost is converted at today's rate, so currency gains or losses since purchase are not included in P&amp;L. Table prices are in each position's own currency, from Yahoo on the exchange matching that currency (hover a symbol to see which); * = price from the imported statement.</div>
+<div class="leg">Summary figures are in ₹. Cost is converted at today's rate, so currency gains or losses since purchase are not included in P&amp;L. Table prices are in each position's own currency, from Yahoo on an exchange quoting that currency. Tap or hover a price to see its listing and time; * = price from the imported statement.</div>
 ${miss.length?`<div class="wa" style="font-size:13px;margin-top:8px">No ₹ rate for ${miss.map(esc).join(", ")}. Enter ₹ per 1 unit:</div>${miss.map(c=>`<input type="text" class="fxin" data-c="${esc(c)}" placeholder="INR per ${esc(c)}" style="margin-top:6px">`).join("")}<button id="fxs">Save rates</button>`:""}</div>
 <div class="card"><div class="wrap"><table style="min-width:840px"><tr><th>Symbol</th><th>Ccy</th><th>Qty</th><th>Avg</th><th>LTP</th><th>Value</th><th>P&amp;L</th><th>P&amp;L %</th><th>Weight</th><th style="text-align:right">Value (₹)</th></tr>`+
-  rows.map(r=>`<tr><td><b${r.live?` title="Yahoo ${esc(r.live.y)}"`:""}>${esc(r.sym)}</b></td><td>${esc(r.ccy)}</td><td>${r.qty}</td><td>${nf(r.inv/r.qty)}</td>${(s=>`<td class="pxsrc" data-src="${esc(s)}" title="${esc(s)}">`)(r.live?`Yahoo ${r.live.y}`+(r.live.time?" · "+when(r.live.time):""):"Price from the imported statement")}${nf(r.ltp)}${r.live?"":` <span class="mu">*</span>`}</td><td>${nf(r.val)}</td><td class="${cl(r.val-r.inv)}">${nf(r.val-r.inv)}</td><td class="${cl(r.val-r.inv)}">${f(r.inv?(r.val/r.inv-1)*100:null)}</td><td>${r.inrV&&tv?(r.inrV/tv*100).toFixed(1)+"%":"—"}</td><td style="text-align:right">${r.inrV==null?"—":inr(r.inrV)}</td></tr>`).join("")+`</table></div></div>`;
+  rows.map(r=>`<tr><td><b>${esc(r.sym)}</b></td><td>${esc(r.ccy)}</td><td>${r.qty}</td><td>${nf(r.inv/r.qty)}</td>${(s=>`<td class="pxsrc" data-src="${esc(s)}" title="${esc(s)}">`)(r.live?`Yahoo ${r.live.y}`+(r.live.time?" · "+when(r.live.time):""):"Price from the imported statement")}${nf(r.ltp)}${r.live?"":` <span class="mu">*</span>`}</td><td>${nf(r.val)}</td><td class="${cl(r.val-r.inv)}">${nf(r.val-r.inv)}</td><td class="${cl(r.val-r.inv)}">${f(r.inv?(r.val/r.inv-1)*100:null)}</td><td>${r.inrV&&tv?(r.inrV/tv*100).toFixed(1)+"%":"—"}</td><td style="text-align:right">${r.inrV==null?"—":inr(r.inrV)}</td></tr>`).join("")+`</table></div></div>`;
   return sec("i",`IBKR holdings (${rows.length})`,body);
 }
 function assetCard(){
@@ -164,34 +164,10 @@ function assetCard(){
 <div class="m"><small>P&amp;L</small><b class="${cl(pl)}">${inr(pl)} (${f(ti?pl/ti*100:null)})</b></div>
 <div class="m"><small>Holdings</small><b>${rows.length}</b></div><div class="m"><small>Top 5 weight</small><b>${top5.toFixed(0)}%</b></div>
 <div class="m"><small>Fixed income</small><b>${sh("fi")}%</b></div><div class="m"><small>Physical gold</small><b>${sh("gold")}%</b></div><div class="m"><small>Real estate</small><b>${sh("re")}%</b></div></div>
-<div class="leg">Fixed income is valued from the amount, buy date and rate you entered, as of today; actual payouts (for example PPF rate changes) can differ. Gold, real estate and other assets use the current price you entered, so update it when it changes. Assets without a buy price are left out of Invested and P&amp;L.</div></div>
+<div class="leg">Fixed income is valued from the amount, buy date and rate you entered, as of today; actual payouts (for example PPF rate changes) can differ. Physical gold follows IBJA's daily rate once prices are refreshed; real estate and other assets use the current price you entered, so update it when it changes. Assets without a buy price are left out of Invested and P&amp;L.</div></div>
 <div class="card"><div class="wrap"><table style="min-width:900px"><tr><th>Name</th><th>Type</th><th>Details</th><th>Buy date</th><th>Invested</th><th>Value</th><th>P&amp;L</th><th>P&amp;L %</th><th>Weight</th><th></th></tr>`+
   rows.map(({x,inv,val,det})=>`<tr><td><b>${esc(x.name)}</b></td><td>${esc(x.type)}</td><td>${esc(det)}</td><td>${esc(x.date||"—")}</td><td>${inr(inv)}</td><td>${inr(val)}</td><td class="${cl(inv==null?null:val-inv)}">${inv==null?"—":inr(val-inv)}</td><td class="${cl(inv==null?null:val-inv)}">${inv?f((val/inv-1)*100):"—"}</td><td>${tv?(val/tv*100).toFixed(1)+"%":"—"}</td><td><button class="aed" data-i="${esc(x.id)}">Edit</button><button class="arm" data-i="${esc(x.id)}">Remove</button></td></tr>`).join("")+`</table></div></div>`);
 }
-// Fund names are long ("PARAG PARIKH FLEXI CAP FUND - DIRECT PLAN - GROWTH"): drop the plan/option words and cap the length.
-// The full name stays in the tooltip.
-const fundName=s=>{const t=String(s).replace(/\b(DIRECT|PLAN|GROWTH|OPTION)\b/gi,"").replace(/\s*[-–]\s*(?=[-–]|$)/g,"").replace(/^\s*[-–]\s*|\s+/g," ").trim();
-  return t.length>32?t.slice(0,31).trim()+"…":t||String(s)};
-const symCell=r=>r.isMF?`<b title="${esc(r.sym)}">${esc(fundName(r.sym))}</b>`:`<b>${esc(r.sym)}</b>`;
-// Same table as index.html's renderAssetTable, plus a P&L % column for Zerodha equities, funds and gold/silver
-renderAssetTable=function(rows,tv,title,assetType){
-  if(!rows.length)return"";
-  const isEq=assetType==="eq";
-  const header=`<tr><th>Symbol</th><th>Qty</th><th>Avg</th><th>LTP</th><th>Value</th><th>P&L</th><th>P&L %</th><th>Weight</th>
- ${isEq?`<th>PE</th><th>EPS gr.</th><th>PE chg</th><th>Price 1Y</th><th>vs 200d</th>`:""}<th>Label</th></tr>`;
-  const content=rows.map(r=>{const m=r.m,c=!m?"mu":/Attractive|growth/.test(m.label)?"up":/risk|falling|Loss/.test(m.label)?"dn":"wa";
-    const peCell=isEq?(m&&m.pe!=null?(m.bad?"n/a ⚠":m.pe.toFixed(1)):"—"):"";
-    const epsCell=isEq?(m&&m.epsG!=null?f(m.epsG)+(m.basis==="FY"?" FY":""):"—"):"";
-    const peChgCell=isEq?(m&&m.peChg!=null?f(m.peChg):"—"):"";
-    const p1yCell=isEq?(m&&m.price1y!=null?f(m.price1y):"—"):"";
-    const dmaCell=isEq?(m&&m.dma!=null?f(m.dma):"—"):"";
-    return `<tr><td>${symCell(r)}</td><td>${r.qty}</td><td>${inr2(r.inv/r.qty)}</td><td class="pxsrc" data-src="${esc(r.src||"")}" title="${esc(r.src||"")}">${inr2(r.ltp)}${fileMark(r)}</td><td>${inr(r.val)}</td><td class="${cl(r.val-r.inv)}">${inr(r.val-r.inv)}</td><td class="${cl(r.val-r.inv)}">${f(r.inv?(r.val/r.inv-1)*100:null)}</td><td>${(r.val/tv*100).toFixed(1)}%</td>
- ${isEq?`<td>${peCell}</td><td class="${cl(m&&m.epsG)}">${epsCell}</td><td class="${cl(m&&m.peChg)}">${peChgCell}</td><td class="${cl(m&&m.price1y)}">${p1yCell}</td><td class="${cl(m&&m.dma)}">${dmaCell}</td>`:""}<td class="${c}">${m?m.label:"—"}</td></tr>`;}).join("");
-  const isOpen=!collapsedSections[assetType];
-  return `<div class="table-section"><div class="collapsible-header ${isOpen?"open":""}" data-section="${assetType}">
- <span class="toggle">▶</span><span>${title} (${rows.length})</span></div>
- <div class="collapsible-content"><div class="wrap"><table>${header}${content}</table></div></div></div>`;
-};
 
 function manage(){
   return `<details class="mg" id="mg" ${(mopen==null?!(H.length||IB.length||AS.length):mopen)?"open":""}><summary>Manage data: import holdings, add assets</summary>
@@ -201,14 +177,13 @@ function manage(){
 <textarea id="ipaste" rows="3" placeholder="Or paste the CSV text here" ${sty}></textarea><button id="ipb">Import pasted</button>${IB.length?'<button id="iclr">Remove all IBKR</button>':""}
 <div class="mu" style="font-size:13px;margin-top:8px">${esc(imsg)}</div></div>
 <div class="card"><b>Add other asset</b>
-<p class="s">Choose the type; the fields change to fit it. Fixed income is valued from the amount, buy date and interest rate. Gold, real estate and other assets use the current price you enter.</p>
+<p class="s">Choose the type; the fields change to fit it. Fixed income is valued from the amount, buy date and interest rate. Physical gold updates from IBJA's daily rate; real estate and other assets use the current price you enter.</p>
 <select id="atype" ${sty}>${TYPES.map(t=>`<option>${t}</option>`).join("")}</select>
 <input type="text" id="aname" placeholder="Name (e.g. SBI PPF, Gold coins, Flat in Chennai)" style="margin-top:6px">
 <div id="afields">${fields("fi")}</div>
 <button id="aadd">Add asset</button><div class="mu" style="font-size:13px;margin-top:8px">${esc(amsg)}</div></div></details>`;
 }
 
-// ---------- Hook into the existing tab ----------
 // ---------- Export as PDF: the browser's print dialog ("Save as PDF"), styled by a print stylesheet ----------
 const st=document.createElement("style");
 st.textContent=`.printonly{display:none}
@@ -241,7 +216,7 @@ function prepPrint(){
   document.querySelectorAll("#v .card").forEach(c=>{const b=c.querySelector("b");if(b&&HIDE.includes(b.textContent.trim()))c.classList.add("pf-hide")});
   document.querySelectorAll("#v table").forEach(t=>{if(!t.tHead&&t.rows[0])t.createTHead().appendChild(t.rows[0])});   // repeat header rows on every page
   const d=new Date(),hd=document.getElementById("prhd");
-  if(hd)hd.innerHTML=`<b style="font-size:16px">Holdings report${who!=="All"?" · "+esc(who):""}</b><div class="mu">Generated ${d.toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})} · Zerodha prices as of last price refresh · Not investment advice</div>`;
+  if(hd)hd.innerHTML=`<b style="font-size:16px">Holdings report${who!=="All"?" · "+esc(who):""}</b><div class="mu">Generated ${d.toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})} · ${P.at?"Prices as of "+new Date(P.at).toLocaleString("en-IN",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}):"Prices from the imported files"} · Not investment advice</div>`;
   if(document.title.indexOf("Holdings report")<0)_title=document.title;
   document.title="Holdings report "+today();
 }
