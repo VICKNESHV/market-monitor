@@ -40,16 +40,25 @@ async function earnings(y) {
   return out;
 }
 
+// Zerodha may add the NSE series to a symbol (SGBAUG28V-GB, GOLDBEES-EQ, GOLD1-E), and prices are listed under the
+// bare symbol. Some real NSE symbols also end in a short suffix (KLBRENG-B, rights entitlements like CENTEXT-RE),
+// so the symbol as given is always tried first.
+const names = sym => { const b = sym.replace(/-[A-Z][A-Z0-9]?$/, ""); return b === sym ? [sym] : [sym, b]; };
+
+// Yahoo NSE symbol (".NS") for the first of names(sym) that has data
+async function onNSE(sym, fn) {
+  let err;
+  for (const n of names(sym)) { try { return [n + ".NS", await fn(n + ".NS")]; } catch (e) { err = e; } }
+  throw err;
+}
+
 async function one(sym) {
-  const y = bare(sym) + ".NS";
   const res = { error: null };
-  try { Object.assign(res, await prices(y)); } catch (e) { return { error: "price: " + e.message }; }
+  let y;
+  try { const [ys, p] = await onNSE(sym, prices); y = ys; Object.assign(res, p); } catch (e) { return { error: "price: " + e.message }; }
   try { Object.assign(res, await earnings(y)); } catch (e) { res.error = "earnings: " + e.message; }
   return res;
 }
-
-// Zerodha adds the NSE series to some symbols (SGBAUG28V-GB, GOLDBEES-EQ); prices are listed under the bare symbol.
-const bare = sym => sym.replace(/-[A-Z][A-Z0-9]$/, "");
 
 // Latest traded price only, cached briefly so the Holdings page shows near-live values.
 async function quote(y) {
@@ -62,7 +71,7 @@ async function quote(y) {
 }
 
 async function ltp(sym) {
-  const m = await quote(bare(sym) + ".NS");
+  const [, m] = await onNSE(sym, quote);
   return { ltp: m.regularMarketPrice, time: m.regularMarketTime };
 }
 
@@ -114,8 +123,8 @@ async function bhav(syms) {
     const text = "\n" + await r.text();
     for (const s of syms) {
       if (out[s]) continue;
-      const i = text.indexOf("\n" + bare(s) + ",");
-      if (i < 0) continue;
+      const i = names(s).map(n => text.indexOf("\n" + n + ",")).find(i => i >= 0);
+      if (i === undefined) continue;
       const f = text.slice(i + 1, text.indexOf("\n", i + 1)).split(",").map(x => x.trim());
       const close = parseFloat(f[8]);
       if (close > 0) out[s] = { ltp: close, date: f[2] };
@@ -145,7 +154,7 @@ async function live(params) {
     const [sym, ccy] = p.split(":"), k = sym + "|" + ccy;
     try { out.ib[k] = await ibQuote(sym, (ccy || "USD").toUpperCase()); } catch (e) { out.ib[k] = { error: e.message }; }
   }));
-  await Promise.all(list("ltp").slice(0, 20).map(async s => {
+  await Promise.all(list("ltp").slice(0, 15).map(async s => {   // ≤ 2 lookups each + NSE files + AMFI + IBJA stays under 50
     try { out.px[s] = await ltp(s); } catch (e) { out.px[s] = { error: e.message }; }
   }));
   const missing = Object.keys(out.px).filter(s => out.px[s].error);
