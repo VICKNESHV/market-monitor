@@ -274,6 +274,11 @@ function metrics(r){
  return m;
 }
 // Latest price: fund NAV by ISIN or stock/ETF LTP from the Worker, else the price in the imported file
+// Where a holding's live price came from and when, e.g. "Yahoo · 6 Oct, 05:35 pm", "NSE close · 06-Oct-2026", "AMFI NAV · 06-Oct-2026"
+const when=t=>new Date(t*1000).toLocaleString("en-IN",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"});
+const pxSrc=x=>{const n=x.isin&&P.nav&&P.nav[x.isin];if(n&&n.ltp>0)return "AMFI NAV"+(n.date?" · "+n.date:"");
+ const l=P.px&&P.px[x.sym];if(!(l&&l.ltp>0))return "Price from the imported file";
+ return l.time?"Yahoo · "+when(l.time):"NSE close"+(l.date?" · "+l.date:"")};
 const livePx=x=>{const l=(x.isin&&P.nav&&P.nav[x.isin])||(P.px&&P.px[x.sym]);return l&&l.ltp>0?l:null};
 const px=x=>{const l=livePx(x);return l?l.ltp:x.ltp};
 async function refreshPrices(){
@@ -349,7 +354,7 @@ function holdings(){
  const by={};
  for(const x of H.filter(x=>who==="All"||x.owner===who)){
   const p=px(x),r=by[x.sym]||(by[x.sym]={sym:x.sym,qty:0,inv:0,val:0,ltp:p,isMF:x.isMutualFund});
-  r.qty+=x.qty;r.inv+=x.qty*x.avg;r.val+=x.qty*p;r.ltp=p;r.live=!!livePx(x);
+  r.qty+=x.qty;r.inv+=x.qty*x.avg;r.val+=x.qty*p;r.ltp=p;r.live=!!livePx(x);r.src=pxSrc(x);
  }
  const rows=Object.values(by).map(r=>({...r,m:A[r.sym]||null})).sort((a,b)=>b.val-a.val);
  const tv=sum(rows.map(r=>r.val)),ti=sum(rows.map(r=>r.inv)),pl=tv-ti;
