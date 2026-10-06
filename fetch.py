@@ -98,7 +98,11 @@ def main():
     if not found:
         raise SystemExit("No recent NSE file found")
     today, now = found
-    ago = nearest(today.replace(year=today.year - 1))
+    try:
+        year_ago = today.replace(year=today.year - 1)
+    except ValueError:  # 29 Feb
+        year_ago = today.replace(year=today.year - 1, day=28)
+    ago = nearest(year_ago)
     if not ago:
         raise SystemExit("No year-ago NSE file found")
     ago_day, ago_rows = ago
