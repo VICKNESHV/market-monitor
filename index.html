@@ -278,22 +278,21 @@ const livePx=x=>{const l=(x.isin&&P.nav&&P.nav[x.isin])||(P.px&&P.px[x.sym]);ret
 const px=x=>{const l=livePx(x);return l?l.ltp:x.ltp};
 async function refreshPrices(){
  if(!W||pxBusy)return;
- if(!H.length){hmsg="Import holdings first.";return show()}
  pxBusy=true;
  const syms=[...new Set(H.filter(h=>!h.isMutualFund).map(h=>h.sym))],isins=[...new Set(H.filter(h=>h.isin).map(h=>h.isin))];
- const np={},nn={},url=q=>W+(W.includes("?")?"&":"?")+q;
+ let gd=null;const np={},nn={},url=q=>W+(W.includes("?")?"&":"?")+q;
  try{
   for(let i=0;i<Math.max(syms.length,1);i+=20){
    hmsg=`Updating prices ${Math.min(i+20,syms.length)} of ${syms.length}…`;show();
-   const q="ltp="+encodeURIComponent(syms.slice(i,i+20).join(","))+(i===0&&isins.length?"&isin="+encodeURIComponent(isins.join(",")):"");
+   const q="ltp="+encodeURIComponent(syms.slice(i,i+20).join(","))+(i===0&&isins.length?"&isin="+encodeURIComponent(isins.join(",")):"")+(i===0?"&gold=1":"");
    const r=await fetch(url(q));
    if(!r.ok)throw new Error("HTTP "+r.status);
    const d=await r.json();
    if(!d.px)throw new Error("Worker doesn't support price updates yet; redeploy worker.js");
    for(const[k,v]of Object.entries(d.px))if(v.ltp>0)np[k]=v;
-   Object.assign(nn,d.nav||{});
+   Object.assign(nn,d.nav||{});if(d.gold)gd=d.gold;
   }
-  P={at:new Date().toISOString(),px:{...(P.px||{}),...np},nav:{...(P.nav||{}),...nn}};lsSet("mm_prices",P);
+  P={at:new Date().toISOString(),px:{...(P.px||{}),...np},nav:{...(P.nav||{}),...nn},gold:gd||P.gold};lsSet("mm_prices",P);
   const n=Object.keys(np).length+Object.keys(nn).length,want=syms.length+isins.length;
   hmsg=`Prices updated: ${n} of ${want}${n<want?" (the rest use the imported price)":""}.`;
  }catch(e){hmsg="Price update failed: "+e.message;P.at=new Date().toISOString()}   // don't retry on every render
@@ -397,7 +396,7 @@ function bindHoldings(){
  $("hws").onclick=()=>{W=$("hw").value.trim().replace(/\/+$/,"" );lsSet("mm_worker",W);hmsg="Saved.";show();};
  if($("han"))$("han").onclick=analyse;
  if($("hpx"))$("hpx").onclick=refreshPrices;
- if(W&&H.length&&!pxBusy&&!(Date.now()-new Date(P.at||0)<15*60e3))refreshPrices();   // auto-refresh when older than 15 minutes
+ if(W&&!pxBusy&&!(Date.now()-new Date(P.at||0)<15*60e3))refreshPrices();   // auto-refresh when older than 15 minutes
  if($("hclear"))$("hclear").onclick=()=>{H=[];A={};who="All";lsSet("mm_holdings2",H);lsSet("mm_analysis",A);hmsg="Cleared.";show();};
  if($("hrm"))$("hrm").onclick=()=>{H=H.filter(h=>h.owner!==who);who="All";lsSet("mm_holdings2",H);hmsg="Removed.";show();};
  document.querySelectorAll(".hwho").forEach(b=>b.onclick=()=>{who=b.dataset.o;show()});
