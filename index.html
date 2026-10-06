@@ -51,7 +51,7 @@ textarea{width:100%;padding:8px;border:1px solid var(--bd);border-radius:8px;bac
 const TABS=["Home","ETFs","Macro","India","Holdings"];
 const f=(x,d=1,u="%")=>x==null?"—":(x>0?"+":"")+x.toFixed(d)+u;
 const cl=x=>x==null?"mu":x>0?"up":x<0?"dn":"mu";
-let M={},I={},H=[],W="",A={},hmsg="",who="All";
+let M={},I={},H=[],W="",A={},P={},hmsg="",who="All",pxBusy=false;
 let assetClassFilter={eq:true,mf:true,gold:true};
 let collapsedSections={};
 const get=u=>fetch(u+"?"+Date.now()).then(r=>r.json()).catch(()=>null);
@@ -137,12 +137,14 @@ function parseHoldings(rows){
  const col=(...n)=>{for(const k of n){const i=h.findIndex(x=>x.startsWith(k));if(i>=0)return i}return -1};
  const cS=col("symbol","instrument","stock","company","scrip","name"),cQ=col("quantityavailable","qty","quantity"),
  cA=col("averageprice","buyavg","avgcost","avgprice","averagecost","avg"),cL=col("previousclosingprice","ltp","closeprice","prevclose","closing","currentprice","price");
+ const cI=col("isin");
  if(cQ<0||cA<0||cL<0)throw new Error("quantity, average price or closing price column not found (headers seen: "+rows[hi].join(" | ")+")");
  const out=[];
  for(const r of rows.slice(hi+1)){
   const raw=String(r[cS]??"").trim(),qty=num(r[cQ]),avg=num(r[cA]),ltp=num(r[cL]);
   if(!raw||qty==null||avg==null||ltp==null||qty<=0||/^total$/i.test(raw))continue;
-  out.push({sym:normSym(raw),qty,avg,ltp});
+  const isin=cI>=0?String(r[cI]??"").trim():"";
+  out.push({sym:normSym(raw),qty,avg,ltp,...(isin?{isin}:{})});
  }
  if(!out.length)throw new Error("no holdings rows found");
  return out;
@@ -269,6 +271,32 @@ function metrics(r){
  m.label=m.loss?"Loss-making":m.epsG==null?"No earnings data":m.epsG<0&&m.peChg>0?"High risk / Overvalued":m.epsG<0?"Earnings falling":m.epsG>=15?"High growth":"Fair / Stagnant";
  return m;
 }
+// Latest price: fund NAV by ISIN or stock/ETF LTP from the Worker, else the price in the imported file
+const livePx=x=>{const l=(x.isin&&P.nav&&P.nav[x.isin])||(P.px&&P.px[x.sym]);return l&&l.ltp>0?l:null};
+const px=x=>{const l=livePx(x);return l?l.ltp:x.ltp};
+async function refreshPrices(){
+ if(!W||pxBusy)return;
+ if(!H.length){hmsg="Import holdings first.";return show()}
+ pxBusy=true;
+ const syms=[...new Set(H.filter(h=>!h.isMutualFund).map(h=>h.sym))],isins=[...new Set(H.filter(h=>h.isin).map(h=>h.isin))];
+ const np={},nn={},url=q=>W+(W.includes("?")?"&":"?")+q;
+ try{
+  for(let i=0;i<Math.max(syms.length,1);i+=20){
+   hmsg=`Updating prices ${Math.min(i+20,syms.length)} of ${syms.length}…`;show();
+   const q="ltp="+encodeURIComponent(syms.slice(i,i+20).join(","))+(i===0&&isins.length?"&isin="+encodeURIComponent(isins.join(",")):"");
+   const r=await fetch(url(q));
+   if(!r.ok)throw new Error("HTTP "+r.status);
+   const d=await r.json();
+   if(!d.px)throw new Error("Worker doesn't support price updates yet; redeploy worker.js");
+   for(const[k,v]of Object.entries(d.px))if(v.ltp>0)np[k]=v;
+   Object.assign(nn,d.nav||{});
+  }
+  P={at:new Date().toISOString(),px:{...(P.px||{}),...np},nav:{...(P.nav||{}),...nn}};lsSet("mm_prices",P);
+  const n=Object.keys(np).length+Object.keys(nn).length,want=syms.length+isins.length;
+  hmsg=`Prices updated: ${n} of ${want}${n<want?" (the rest use the imported price)":""}.`;
+ }catch(e){hmsg="Price update failed: "+e.message;P.at=new Date().toISOString()}   // don't retry on every render
+ pxBusy=false;show();
+}
 async function analyse(){
  if(!W){hmsg="Paste your Worker address first.";return show()}
  const raw={},eq=[...new Set(H.map(h=>h.sym))].filter(s=>!isGold(s)&&!isMF(s));
@@ -295,7 +323,7 @@ function renderAssetTable(rows,tv,title,assetType){
   const peChgCell=isEq?(m&&m.peChg!=null?f(m.peChg):"—"):"";
   const p1yCell=isEq?(m&&m.price1y!=null?f(m.price1y):"—"):"";
   const dmaCell=isEq?(m&&m.dma!=null?f(m.dma):"—"):"";
-  return `<tr><td><b>${r.sym}</b></td><td>${r.qty}</td><td>${inr(r.inv/r.qty)}</td><td>${inr(r.ltp)}</td><td>${inr(r.val)}</td><td class="${cl(r.val-r.inv)}">${inr(r.val-r.inv)}</td><td>${(r.val/tv*100).toFixed(1)}%</td>
+  return `<tr><td><b>${r.sym}</b></td><td>${r.qty}</td><td>${inr(r.inv/r.qty)}</td><td>${inr(r.ltp)}${r.live?"":` <span class="mu" title="Price from the imported file">*</span>`}</td><td>${inr(r.val)}</td><td class="${cl(r.val-r.inv)}">${inr(r.val-r.inv)}</td><td>${(r.val/tv*100).toFixed(1)}%</td>
   ${isEq?`<td>${peCell}</td><td class="${cl(m&&m.epsG)}">${epsCell}</td><td class="${cl(m&&m.peChg)}">${peChgCell}</td><td class="${cl(m&&m.price1y)}">${p1yCell}</td><td class="${cl(m&&m.dma)}">${dmaCell}</td>`:""}<td class="${c}">${m?m.label:"—"}</td></tr>`;}).join("");
  const isOpen=!collapsedSections[assetType];
  return `<div class="table-section"><div class="collapsible-header ${isOpen?"open":""}" data-section="${assetType}">
@@ -319,8 +347,8 @@ function holdings(){
  <div style="margin-top:6px">${who!=="All"?`<button id="hrm">Remove ${who}</button>`:""}<button id="hclear">Clear everything</button></div></div>`;
  const by={};
  for(const x of H.filter(x=>who==="All"||x.owner===who)){
-  const r=by[x.sym]||(by[x.sym]={sym:x.sym,qty:0,inv:0,val:0,ltp:x.ltp,isMF:x.isMutualFund});
-  r.qty+=x.qty;r.inv+=x.qty*x.avg;r.val+=x.qty*x.ltp;r.ltp=x.ltp;
+  const p=px(x),r=by[x.sym]||(by[x.sym]={sym:x.sym,qty:0,inv:0,val:0,ltp:p,isMF:x.isMutualFund});
+  r.qty+=x.qty;r.inv+=x.qty*x.avg;r.val+=x.qty*p;r.ltp=p;r.live=!!livePx(x);
  }
  const rows=Object.values(by).map(r=>({...r,m:A[r.sym]||null})).sort((a,b)=>b.val-a.val);
  const tv=sum(rows.map(r=>r.val)),ti=sum(rows.map(r=>r.inv)),pl=tv-ti;
@@ -345,6 +373,8 @@ function holdings(){
  <div class="m"><small>Earnings falling</small><b class="dn">${share(r=>/falling|risk/.test(r.m.label)).toFixed(0)}%</b></div>
  <div class="m"><small>Below 200-day</small><b>${share(r=>r.m.dma<0).toFixed(0)}%</b></div></div>
  <div class="leg">Equity figures cover the non-gold/silver part only. Equity PE = value-weighted (total value ÷ total earnings) over holdings with positive earnings. Analysis from ${A.at}. Missing data is shown as "—".</div>`;
+ h+=`<div class="leg">${P.at&&Object.keys({...P.px,...P.nav}).length?"Prices updated "+new Date(P.at).toLocaleString("en-IN",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})+" (stocks and ETFs from Yahoo or the last NSE close, fund NAVs from AMFI). ":""}* = price from the imported file.</div>`;
+ h+=`<button id="hpx">${W?"Refresh prices":"Add a Worker address to get live prices"}</button>`;
  h+=`<button id="han">${Object.keys(A).length>1?"Refresh analysis":"Analyse PE and EPS growth"}</button></div>`;
  h+=`<div class="card"><b>View by Asset Class</b>
  <div class="asset-filters">
@@ -364,6 +394,8 @@ function bindHoldings(){
  $("hpb").onclick=importPaste;
  $("hws").onclick=()=>{W=$("hw").value.trim().replace(/\/+$/,"" );lsSet("mm_worker",W);hmsg="Saved.";show();};
  if($("han"))$("han").onclick=analyse;
+ if($("hpx"))$("hpx").onclick=refreshPrices;
+ if(W&&H.length&&!pxBusy&&!(Date.now()-new Date(P.at||0)<15*60e3))refreshPrices();   // auto-refresh when older than 15 minutes
  if($("hclear"))$("hclear").onclick=()=>{H=[];A={};who="All";lsSet("mm_holdings2",H);lsSet("mm_analysis",A);hmsg="Cleared.";show();};
  if($("hrm"))$("hrm").onclick=()=>{H=H.filter(h=>h.owner!==who);who="All";lsSet("mm_holdings2",H);hmsg="Removed.";show();};
  document.querySelectorAll(".hwho").forEach(b=>b.onclick=()=>{who=b.dataset.o;show()});
@@ -388,7 +420,7 @@ function show(){
  if(t==="holdings")bindHoldings();
 }
 const lsData={get:ls.get, set:lsSet};
-H=lsData.get("mm_holdings2")||[];W=lsData.get("mm_worker")||"";A=lsData.get("mm_analysis")||{};
+H=lsData.get("mm_holdings2")||[];W=lsData.get("mm_worker")||"";A=lsData.get("mm_analysis")||{};P=lsData.get("mm_prices")||{};
 assetClassFilter=lsData.get("mm_assetFilter")||{eq:true,mf:true,gold:true};
 collapsedSections=lsData.get("mm_collapsedSections")||{};
 Promise.all([get("markets.json"),get("data.json")]).then(([m,i])=>{

@@ -82,7 +82,7 @@ function fields(k){
 
 // ---------- Sections added around your existing Holdings view ----------
 function totalCard(){
-  const val=x=>x.qty*x.ltp,z=H.filter(x=>mine(x.owner));
+  const val=x=>x.qty*px(x),z=H.filter(x=>mine(x.owner));
   const zg=sum(z.filter(x=>isGold(x.sym)).map(val));
   const zm=sum(z.filter(x=>!isGold(x.sym)&&x.isMutualFund).map(val));
   const ze=sum(z.filter(x=>!isGold(x.sym)&&!x.isMutualFund).map(val));
@@ -97,7 +97,7 @@ function totalCard(){
 <div style="margin:8px 0 10px"><b style="font-size:26px">${cr(tv)}</b>${cr(tv)!==full?` <span class="mu" style="font-size:13px">${full}</span>`:""}</div>
 <div class="bar" style="height:14px">${cls.map(([n,v],i)=>`<i title="${esc(n)}" style="width:${Math.max(0,v/tv*100)}%;background:${COL[i%COL.length]}"></i>`).join("")}</div>`+
   cls.map(([n,v],i)=>`<div class="top" style="margin-top:8px"><span><span class="dot" style="background:${COL[i%COL.length]}"></span>${esc(n)}</span><span><b>${inr(v)}</b> <span class="mu">${(v/tv*100).toFixed(1)}%</span></span></div>`).join("")+
-  `<div class="leg">Zerodha = quantity × previous close (funds at NAV). IBKR converted to ₹ at the latest USD/INR and EUR/USD from the Markets data, or rates you entered. Other assets are values you typed in. Gold in all forms (ETFs and physical): ${(gold/tv*100).toFixed(1)}%.${noRate.length?` <span class="wa">Excluded until a rate is entered: ${noRate.map(esc).join(", ")}.</span>`:""}</div></div>`;
+  `<div class="leg">Zerodha = quantity × latest price from the Worker (funds at AMFI NAV), or the imported price where none is available. IBKR converted to ₹ at the latest USD/INR and EUR/USD from the Markets data, or rates you entered. Other assets are values you typed in. Gold in all forms (ETFs and physical): ${(gold/tv*100).toFixed(1)}%.${noRate.length?` <span class="wa">Excluded until a rate is entered: ${noRate.map(esc).join(", ")}.</span>`:""}</div></div>`;
 }
 const SO=ls.get("mm_sections")||{};
 const sec=(k,title,body)=>`<details class="sec" data-k="${k}" ${SO[k]===false?"":"open"}><summary>${title}</summary>${body}</details>`;
@@ -205,7 +205,7 @@ function prepPrint(){
   document.querySelectorAll("#v .card").forEach(c=>{const b=c.querySelector("b");if(b&&HIDE.includes(b.textContent.trim()))c.classList.add("pf-hide")});
   document.querySelectorAll("#v table").forEach(t=>{if(!t.tHead&&t.rows[0])t.createTHead().appendChild(t.rows[0])});   // repeat header rows on every page
   const d=new Date(),hd=document.getElementById("prhd");
-  if(hd)hd.innerHTML=`<b style="font-size:16px">Holdings report${who!=="All"?" · "+esc(who):""}</b><div class="mu">Generated ${d.toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})} · Zerodha prices are previous close · Not investment advice</div>`;
+  if(hd)hd.innerHTML=`<b style="font-size:16px">Holdings report${who!=="All"?" · "+esc(who):""}</b><div class="mu">Generated ${d.toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})} · Zerodha prices as of last price refresh · Not investment advice</div>`;
   if(document.title.indexOf("Holdings report")<0)_title=document.title;
   document.title="Holdings report "+today();
 }

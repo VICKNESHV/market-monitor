@@ -1,5 +1,7 @@
 // Cloudflare Worker: looks up price and earnings data for NSE stocks.
 // The page sends only stock symbols: GET /?s=INFY,TCS,M%26M
+// Latest prices only: GET /?ltp=INFY,GOLDBEES,SGBAUG28V&isin=INF179K01VQ4
+// (stocks/ETFs from Yahoo, else NSE's last close, e.g. for gold bonds; fund NAVs from AMFI)
 const ORIGIN = "https://vickneshv.github.io";   // only your site may call this from a browser
 const UA = { "User-Agent": "Mozilla/5.0" };
 const CACHE = { cf: { cacheTtl: 21600, cacheEverything: true } };   // 6 hours
@@ -43,6 +45,71 @@ async function one(sym) {
   return res;
 }
 
+// Latest traded price only, cached briefly so the Holdings page shows near-live values.
+async function ltp(sym) {
+  const r = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(sym + ".NS")}?range=1d&interval=1d`,
+    { headers: UA, cf: { cacheTtl: 300, cacheEverything: true } });   // 5 minutes
+  if (!r.ok) throw new Error("HTTP " + r.status);
+  const m = (await r.json()).chart.result[0].meta;
+  if (m.regularMarketPrice == null) throw new Error("no price");
+  return { ltp: m.regularMarketPrice, time: m.regularMarketTime };
+}
+
+// Mutual fund NAVs from AMFI's daily file, looked up by ISIN.
+// Lines look like: Scheme Code;ISIN Growth;ISIN Reinvestment;Scheme Name;[Plan;Option;]NAV;Date (NAV and date are always last)
+async function navs(isins) {
+  const r = await fetch("https://portal.amfiindia.com/spages/NAVAll.txt", { headers: UA, cf: { cacheTtl: 3600, cacheEverything: true } });
+  if (!r.ok) throw new Error("AMFI HTTP " + r.status);
+  const text = await r.text(), out = {};
+  for (const isin of isins) {
+    const i = text.indexOf(isin);
+    if (i < 0) continue;
+    let end = text.indexOf("\n", i);
+    if (end < 0) end = text.length;
+    const f = text.slice(text.lastIndexOf("\n", i) + 1, end).split(";");
+    const nav = parseFloat(f[f.length - 2]);
+    if (nav > 0) out[isin] = { ltp: nav, date: f[f.length - 1].trim() };
+  }
+  return out;
+}
+
+// Closing prices from NSE's daily bhavcopy, for symbols Yahoo doesn't carry (e.g. Sovereign Gold Bonds).
+// Tries today and then earlier days, since the file appears only after market close and not on holidays.
+// Lines look like: SYMBOL, SERIES, DATE1, PREV_CLOSE, OPEN_PRICE, HIGH_PRICE, LOW_PRICE, LAST_PRICE, CLOSE_PRICE, ...
+async function bhav(syms) {
+  const ist = new Date(Date.now() + 5.5 * 3600e3);
+  for (let back = 0; back < 7; back++) {
+    const d = new Date(ist - back * 86400e3);
+    const ymd = String(d.getUTCDate()).padStart(2, "0") + String(d.getUTCMonth() + 1).padStart(2, "0") + d.getUTCFullYear();
+    const r = await fetch(`https://nsearchives.nseindia.com/products/content/sec_bhavdata_full_${ymd}.csv`,
+      { headers: UA, cf: { cacheTtl: 3600, cacheEverything: true } });
+    if (!r.ok) continue;
+    const text = "\n" + await r.text(), out = {};
+    for (const s of syms) {
+      const i = text.indexOf("\n" + s + ",");
+      if (i < 0) continue;
+      const f = text.slice(i + 1, text.indexOf("\n", i + 1)).split(",").map(x => x.trim());
+      const close = parseFloat(f[8]);
+      if (close > 0) out[s] = { ltp: close, date: f[2] };
+    }
+    return out;
+  }
+  throw new Error("no NSE bhavcopy in the last 7 days");
+}
+
+async function live(params) {
+  const list = k => (params.get(k) || "").split(",").map(s => s.trim()).filter(Boolean);
+  const out = { px: {}, nav: {}, error: null };
+  await Promise.all(list("ltp").slice(0, 20).map(async s => {
+    try { out.px[s] = await ltp(s); } catch (e) { out.px[s] = { error: e.message }; }
+  }));
+  const missing = Object.keys(out.px).filter(s => out.px[s].error);
+  if (missing.length) try { Object.assign(out.px, await bhav(missing)); } catch (e) { out.error = e.message; }
+  const isins = list("isin").slice(0, 200);
+  if (isins.length) try { out.nav = await navs(isins); } catch (e) { out.error = e.message; }
+  return out;
+}
+
 const PROMPT = `Extract the stock and ETF holdings from the text. Reply with ONLY a JSON array, no explanation:
 [{"symbol":"INFY","qty":10,"avg":1400.5,"ltp":1500}]
 symbol = NSE trading symbol in capitals. qty = quantity held. avg = average buy price PER UNIT (not the total). ltp = latest or closing price PER UNIT (not the total value).
@@ -72,7 +139,9 @@ export default {
         return new Response(JSON.stringify({ error: String(e.message || e) }), { headers: cors });
       }
     }
-    const syms = (new URL(req.url).searchParams.get("s") || "").split(",").map(s => s.trim()).filter(Boolean).slice(0, 20);
+    const params = new URL(req.url).searchParams;
+    if (params.has("ltp") || params.has("isin")) return new Response(JSON.stringify(await live(params)), { headers: cors });
+    const syms = (params.get("s") || "").split(",").map(s => s.trim()).filter(Boolean).slice(0, 20);
     const out = {};
     await Promise.all(syms.map(async s => { out[s] = await one(s); }));
     return new Response(JSON.stringify(out), { headers: cors });
