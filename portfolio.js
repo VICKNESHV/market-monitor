@@ -137,6 +137,11 @@ function assetCard(){
 <div class="card"><div class="wrap"><table style="min-width:900px"><tr><th>Name</th><th>Type</th><th>Details</th><th>Buy date</th><th>Invested</th><th>Value</th><th>P&amp;L</th><th>P&amp;L %</th><th>Weight</th><th></th></tr>`+
   rows.map(({x,inv,val,det})=>`<tr><td><b>${esc(x.name)}</b></td><td>${esc(x.type)}</td><td>${esc(det)}</td><td>${esc(x.date||"—")}</td><td>${inr(inv)}</td><td>${inr(val)}</td><td class="${cl(inv==null?null:val-inv)}">${inv==null?"—":inr(val-inv)}</td><td class="${cl(inv==null?null:val-inv)}">${inv?f((val/inv-1)*100):"—"}</td><td>${tv?(val/tv*100).toFixed(1)+"%":"—"}</td><td><button class="aed" data-i="${esc(x.id)}">Edit</button><button class="arm" data-i="${esc(x.id)}">Remove</button></td></tr>`).join("")+`</table></div></div>`);
 }
+// Fund names are long ("PARAG PARIKH FLEXI CAP FUND - DIRECT PLAN - GROWTH"): drop the plan/option words and cap the length.
+// The full name stays in the tooltip.
+const fundName=s=>{const t=String(s).replace(/\b(DIRECT|PLAN|GROWTH|OPTION)\b/gi,"").replace(/\s*[-–]\s*(?=[-–]|$)/g,"").replace(/^\s*[-–]\s*|\s+/g," ").trim();
+  return t.length>32?t.slice(0,31).trim()+"…":t||String(s)};
+const symCell=r=>r.isMF?`<b title="${esc(r.sym)}">${esc(fundName(r.sym))}</b>`:`<b>${esc(r.sym)}</b>`;
 // Same table as index.html's renderAssetTable, plus a P&L % column for Zerodha equities, funds and gold/silver
 renderAssetTable=function(rows,tv,title,assetType){
   if(!rows.length)return"";
@@ -149,7 +154,7 @@ renderAssetTable=function(rows,tv,title,assetType){
     const peChgCell=isEq?(m&&m.peChg!=null?f(m.peChg):"—"):"";
     const p1yCell=isEq?(m&&m.price1y!=null?f(m.price1y):"—"):"";
     const dmaCell=isEq?(m&&m.dma!=null?f(m.dma):"—"):"";
-    return `<tr><td><b>${r.sym}</b></td><td>${r.qty}</td><td>${inr2(r.inv/r.qty)}</td><td>${inr2(r.ltp)}${fileMark(r)}</td><td>${inr(r.val)}</td><td class="${cl(r.val-r.inv)}">${inr(r.val-r.inv)}</td><td class="${cl(r.val-r.inv)}">${f(r.inv?(r.val/r.inv-1)*100:null)}</td><td>${(r.val/tv*100).toFixed(1)}%</td>
+    return `<tr><td>${symCell(r)}</td><td>${r.qty}</td><td>${inr2(r.inv/r.qty)}</td><td>${inr2(r.ltp)}${fileMark(r)}</td><td>${inr(r.val)}</td><td class="${cl(r.val-r.inv)}">${inr(r.val-r.inv)}</td><td class="${cl(r.val-r.inv)}">${f(r.inv?(r.val/r.inv-1)*100:null)}</td><td>${(r.val/tv*100).toFixed(1)}%</td>
  ${isEq?`<td>${peCell}</td><td class="${cl(m&&m.epsG)}">${epsCell}</td><td class="${cl(m&&m.peChg)}">${peChgCell}</td><td class="${cl(m&&m.price1y)}">${p1yCell}</td><td class="${cl(m&&m.dma)}">${dmaCell}</td>`:""}<td class="${c}">${m?m.label:"—"}</td></tr>`;}).join("");
   const isOpen=!collapsedSections[assetType];
   return `<div class="table-section"><div class="collapsible-header ${isOpen?"open":""}" data-section="${assetType}">
