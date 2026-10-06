@@ -1,8 +1,10 @@
-// Cloudflare Worker: looks up price and earnings data for NSE stocks.
-// The page sends only stock symbols: GET /?s=INFY,TCS,M%26M
-// Latest prices only: GET /?ltp=INFY,GOLDBEES,SGBAUG28V&isin=INF179K01VQ4
-// (stocks/ETFs from Yahoo, else NSE's last close, e.g. for gold bonds; fund NAVs from AMFI)
-// Add &gold=1 for IBJA gold rates per gram by purity, and ib=4GLD:EUR,QQQ:USD for IBKR positions.
+// Cloudflare Worker for the Holdings tab. The page sends only symbols, never quantities or values.
+//   PE / EPS analysis:  GET /?s=INFY,TCS,M%26M
+//   Latest prices:      GET /?ltp=INFY,GOLDBEES,SGBAUG28V-GB&isin=INF179K01VQ4&gold=1&ib=4GLD:EUR,QQQ:USD
+//     ltp  = NSE stocks/ETFs from Yahoo, else NSE's last close (e.g. gold bonds)
+//     isin = mutual fund NAVs from AMFI
+//     gold = IBJA gold rates per gram by purity
+//     ib   = IBKR positions, from Yahoo on an exchange quoting the position's currency
 const ORIGIN = "https://vickneshv.github.io";   // only your site may call this from a browser
 const UA = { "User-Agent": "Mozilla/5.0" };
 const CACHE = { cf: { cacheTtl: 21600, cacheEverything: true } };   // 6 hours
@@ -39,7 +41,7 @@ async function earnings(y) {
 }
 
 async function one(sym) {
-  const y = sym + ".NS";
+  const y = bare(sym) + ".NS";
   const res = { error: null };
   try { Object.assign(res, await prices(y)); } catch (e) { return { error: "price: " + e.message }; }
   try { Object.assign(res, await earnings(y)); } catch (e) { res.error = "earnings: " + e.message; }
@@ -98,27 +100,28 @@ async function navs(isins) {
 }
 
 // Closing prices from NSE's daily bhavcopy, for symbols Yahoo doesn't carry (e.g. Sovereign Gold Bonds).
-// Tries today and then earlier days, since the file appears only after market close and not on holidays.
+// Works back from today: the file appears only after market close and not on holidays, and a thinly traded
+// symbol (many gold bonds) is listed only on days it traded, so each symbol takes its most recent close.
 // Lines look like: SYMBOL, SERIES, DATE1, PREV_CLOSE, OPEN_PRICE, HIGH_PRICE, LOW_PRICE, LAST_PRICE, CLOSE_PRICE, ...
 async function bhav(syms) {
-  const ist = new Date(Date.now() + 5.5 * 3600e3);
-  for (let back = 0; back < 7; back++) {
+  const ist = new Date(Date.now() + 5.5 * 3600e3), out = {};
+  for (let back = 0; back < 10 && Object.keys(out).length < syms.length; back++) {
     const d = new Date(ist - back * 86400e3);
     const ymd = String(d.getUTCDate()).padStart(2, "0") + String(d.getUTCMonth() + 1).padStart(2, "0") + d.getUTCFullYear();
     const r = await fetch(`https://nsearchives.nseindia.com/products/content/sec_bhavdata_full_${ymd}.csv`,
       { headers: UA, cf: { cacheTtl: 3600, cacheEverything: true } });
     if (!r.ok) continue;
-    const text = "\n" + await r.text(), out = {};
+    const text = "\n" + await r.text();
     for (const s of syms) {
+      if (out[s]) continue;
       const i = text.indexOf("\n" + bare(s) + ",");
       if (i < 0) continue;
       const f = text.slice(i + 1, text.indexOf("\n", i + 1)).split(",").map(x => x.trim());
       const close = parseFloat(f[8]);
       if (close > 0) out[s] = { ltp: close, date: f[2] };
     }
-    return out;
   }
-  throw new Error("no NSE bhavcopy in the last 7 days");
+  return out;
 }
 
 // Indian gold rates per gram by purity (24K = 999, 22K = 916, 18K = 750) from IBJA, the benchmark jewellers and RBI use.
@@ -153,35 +156,12 @@ async function live(params) {
   return out;
 }
 
-const PROMPT = `Extract the stock and ETF holdings from the text. Reply with ONLY a JSON array, no explanation:
-[{"symbol":"INFY","qty":10,"avg":1400.5,"ltp":1500}]
-symbol = NSE trading symbol in capitals. qty = quantity held. avg = average buy price PER UNIT (not the total). ltp = latest or closing price PER UNIT (not the total value).
-Numbers without commas. Skip headers and total rows. Use null for anything missing.`;
-
-async function smartParse(env, text) {
-  const out = await env.AI.run("@cf/meta/llama-3.1-8b-instruct", {
-    messages: [{ role: "system", content: PROMPT }, { role: "user", content: text.slice(0, 12000) }],
-    max_tokens: 3000,
-  });
-  const raw = out.response || "";
-  const start = raw.indexOf("["), end = raw.lastIndexOf("]");
-  if (start < 0 || end < start) throw new Error("no JSON in AI reply");
-  return JSON.parse(raw.slice(start, end + 1));
-}
-
 export default {
-  async fetch(req, env) {
-    const cors = { "Access-Control-Allow-Origin": ORIGIN, "Access-Control-Allow-Headers": "Content-Type", "Access-Control-Allow-Methods": "GET, POST", "Content-Type": "application/json" };
+  async fetch(req) {
+    const cors = { "Access-Control-Allow-Origin": ORIGIN, "Access-Control-Allow-Methods": "GET", "Content-Type": "application/json" };
     if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
     if (req.headers.get("Origin") !== ORIGIN) return new Response("{}", { status: 403, headers: cors });
-    if (req.method === "POST") {
-      try {
-        const { text } = await req.json();
-        return new Response(JSON.stringify({ rows: await smartParse(env, String(text || "")) }), { headers: cors });
-      } catch (e) {
-        return new Response(JSON.stringify({ error: String(e.message || e) }), { headers: cors });
-      }
-    }
+    if (req.method !== "GET") return new Response("{}", { status: 405, headers: cors });
     const params = new URL(req.url).searchParams;
     if (params.has("ltp") || params.has("isin") || params.has("ib")) return new Response(JSON.stringify(await live(params)), { headers: cors });
     const syms = (params.get("s") || "").split(",").map(s => s.trim()).filter(Boolean).slice(0, 20);
