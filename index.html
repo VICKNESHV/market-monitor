@@ -112,6 +112,8 @@ function india(){
 const ls={get:k=>{try{return JSON.parse(localStorage.getItem(k))}catch(e){return null}}};
 const lsSet=(k,v)=>{try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}};
 const inr=x=>x==null?"—":"₹"+Math.round(x).toLocaleString("en-IN");
+const inr2=x=>x==null?"—":"₹"+x.toLocaleString("en-IN",{minimumFractionDigits:2,maximumFractionDigits:2});   // per-unit prices
+const fileMark=r=>r.live?"":` <span class="mu" title="Price from the imported file">*</span>`;
 const num=v=>{const n=parseFloat(String(v??"").replace(/[,₹\s]/g,""));return isNaN(n)?null:n};
 const isGold=s=>/GOLD|SILV|^SGB/i.test(s);
 const isMF=s=>/DIRECT|GROWTH|FUND|MF|PLAN|INDEX FUND/i.test(s);
@@ -323,7 +325,7 @@ function renderAssetTable(rows,tv,title,assetType){
   const peChgCell=isEq?(m&&m.peChg!=null?f(m.peChg):"—"):"";
   const p1yCell=isEq?(m&&m.price1y!=null?f(m.price1y):"—"):"";
   const dmaCell=isEq?(m&&m.dma!=null?f(m.dma):"—"):"";
-  return `<tr><td><b>${r.sym}</b></td><td>${r.qty}</td><td>${inr(r.inv/r.qty)}</td><td>${inr(r.ltp)}${r.live?"":` <span class="mu" title="Price from the imported file">*</span>`}</td><td>${inr(r.val)}</td><td class="${cl(r.val-r.inv)}">${inr(r.val-r.inv)}</td><td>${(r.val/tv*100).toFixed(1)}%</td>
+  return `<tr><td><b>${r.sym}</b></td><td>${r.qty}</td><td>${inr2(r.inv/r.qty)}</td><td>${inr2(r.ltp)}${fileMark(r)}</td><td>${inr(r.val)}</td><td class="${cl(r.val-r.inv)}">${inr(r.val-r.inv)}</td><td>${(r.val/tv*100).toFixed(1)}%</td>
   ${isEq?`<td>${peCell}</td><td class="${cl(m&&m.epsG)}">${epsCell}</td><td class="${cl(m&&m.peChg)}">${peChgCell}</td><td class="${cl(m&&m.price1y)}">${p1yCell}</td><td class="${cl(m&&m.dma)}">${dmaCell}</td>`:""}<td class="${c}">${m?m.label:"—"}</td></tr>`;}).join("");
  const isOpen=!collapsedSections[assetType];
  return `<div class="table-section"><div class="collapsible-header ${isOpen?"open":""}" data-section="${assetType}">
