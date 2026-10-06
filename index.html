@@ -280,9 +280,9 @@ async function refreshPrices(){
  const syms=[...new Set(H.filter(h=>!h.isMutualFund).map(h=>h.sym))],isins=[...new Set(H.filter(h=>h.isMutualFund&&h.isin).map(h=>h.isin))];   // only funds: AMFI has no stock prices
  let gd=null;const np={},nn={},url=q=>W+(W.includes("?")?"&":"?")+q;
  try{
-  for(let i=0;i<Math.max(syms.length,1);i+=20){
-   hmsg=`Updating prices ${Math.min(i+20,syms.length)} of ${syms.length}…`;show();
-   const q="ltp="+encodeURIComponent(syms.slice(i,i+20).join(","))+(i===0&&isins.length?"&isin="+encodeURIComponent(isins.join(",")):"")+(i===0?"&gold=1":"");
+  for(let i=0;i<Math.max(syms.length,1);i+=15){
+   hmsg=`Updating prices ${Math.min(i+15,syms.length)} of ${syms.length}…`;show();
+   const q="ltp="+encodeURIComponent(syms.slice(i,i+15).join(","))+(i===0&&isins.length?"&isin="+encodeURIComponent(isins.join(",")):"")+(i===0?"&gold=1":"");
    const r=await fetch(url(q));
    if(!r.ok)throw new Error("HTTP "+r.status);
    const d=await r.json();
