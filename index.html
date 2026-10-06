@@ -292,7 +292,7 @@ async function refreshPrices(){
    for(const[k,v]of Object.entries(d.px))if(v.ltp>0)np[k]=v;
    Object.assign(nn,d.nav||{});if(d.gold)gd=d.gold;
   }
-  P={at:new Date().toISOString(),px:{...(P.px||{}),...np},nav:{...(P.nav||{}),...nn},gold:gd||P.gold};lsSet("mm_prices",P);
+  P={...P,at:new Date().toISOString(),px:{...(P.px||{}),...np},nav:{...(P.nav||{}),...nn},gold:gd||P.gold};lsSet("mm_prices",P);
   const n=Object.keys(np).length+Object.keys(nn).length,want=syms.length+isins.length;
   hmsg=`Prices updated: ${n} of ${want}${n<want?" (the rest use the imported price)":""}.`;
  }catch(e){hmsg="Price update failed: "+e.message;P.at=new Date().toISOString()}   // don't retry on every render
