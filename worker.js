@@ -5,7 +5,8 @@
 //     isin = mutual fund NAVs from AMFI
 //     gold = IBJA gold rates per gram by purity
 //     ib   = IBKR positions, from Yahoo on an exchange quoting the position's currency
-const ORIGIN = "https://vickneshv.github.io";   // only your site may call this from a browser
+// Only your site may call this from a browser: the GitHub Pages address and the custom domain
+const ORIGINS = ["https://vickneshv.github.io", "https://portfolio.vicknesh.dpdns.org"];
 const UA = { "User-Agent": "Mozilla/5.0" };
 const CACHE = { cf: { cacheTtl: 21600, cacheEverything: true } };   // 6 hours
 
@@ -167,9 +168,11 @@ async function live(params) {
 
 export default {
   async fetch(req) {
-    const cors = { "Access-Control-Allow-Origin": ORIGIN, "Access-Control-Allow-Methods": "GET", "Content-Type": "application/json" };
+    const origin = req.headers.get("Origin");
+    const cors = { "Access-Control-Allow-Origin": ORIGINS.includes(origin) ? origin : ORIGINS[0], "Vary": "Origin",
+      "Access-Control-Allow-Methods": "GET", "Content-Type": "application/json" };
     if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
-    if (req.headers.get("Origin") !== ORIGIN) return new Response("{}", { status: 403, headers: cors });
+    if (!ORIGINS.includes(origin)) return new Response("{}", { status: 403, headers: cors });
     if (req.method !== "GET") return new Response("{}", { status: 405, headers: cors });
     const params = new URL(req.url).searchParams;
     if (params.has("ltp") || params.has("isin") || params.has("ib")) return new Response(JSON.stringify(await live(params)), { headers: cors });
