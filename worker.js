@@ -2,7 +2,7 @@
 // The page sends only stock symbols: GET /?s=INFY,TCS,M%26M
 // Latest prices only: GET /?ltp=INFY,GOLDBEES,SGBAUG28V&isin=INF179K01VQ4
 // (stocks/ETFs from Yahoo, else NSE's last close, e.g. for gold bonds; fund NAVs from AMFI)
-// Add &gold=1 for IBJA gold rates per gram by purity.
+// Add &gold=1 for IBJA gold rates per gram by purity, and ib=4GLD:EUR,QQQ:USD for IBKR positions.
 const ORIGIN = "https://vickneshv.github.io";   // only your site may call this from a browser
 const UA = { "User-Agent": "Mozilla/5.0" };
 const CACHE = { cf: { cacheTtl: 21600, cacheEverything: true } };   // 6 hours
@@ -50,13 +50,33 @@ async function one(sym) {
 const bare = sym => sym.replace(/-[A-Z][A-Z0-9]$/, "");
 
 // Latest traded price only, cached briefly so the Holdings page shows near-live values.
-async function ltp(sym) {
-  const r = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(bare(sym) + ".NS")}?range=1d&interval=1d`,
+async function quote(y) {
+  const r = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(y)}?range=1d&interval=1d`,
     { headers: UA, cf: { cacheTtl: 300, cacheEverything: true } });   // 5 minutes
   if (!r.ok) throw new Error("HTTP " + r.status);
   const m = (await r.json()).chart.result[0].meta;
   if (m.regularMarketPrice == null) throw new Error("no price");
+  return m;
+}
+
+async function ltp(sym) {
+  const m = await quote(bare(sym) + ".NS");
   return { ltp: m.regularMarketPrice, time: m.regularMarketTime };
+}
+
+// IBKR positions: try the exchanges used for the position's currency and keep the first quote in that currency.
+// The same ticker can trade in several currencies (ANAU is USD on Xetra, EUR on Paris), so the currency check matters.
+const SUFFIX = { EUR: [".DE", ".PA", ".AS", ".MI"], USD: ["", ".L"], GBP: [".L"], CHF: [".SW"] };
+async function ibQuote(sym, ccy) {
+  for (const sfx of SUFFIX[ccy] || [""]) {
+    const y = sym.replace(/ /g, "-") + sfx;   // IBKR "BRK B" is Yahoo "BRK-B"
+    let m;
+    try { m = await quote(y); } catch (e) { continue; }
+    let p = m.regularMarketPrice, c = m.currency;
+    if (c === "GBp") { p /= 100; c = "GBP"; }   // London quotes in pence
+    if (p > 0 && c === ccy) return { ltp: p, time: m.regularMarketTime, y };
+  }
+  throw new Error("no " + ccy + " quote found");
 }
 
 // Mutual fund NAVs from AMFI's daily file, looked up by ISIN.
@@ -116,7 +136,12 @@ async function gold() {
 
 async function live(params) {
   const list = k => (params.get(k) || "").split(",").map(s => s.trim()).filter(Boolean);
-  const out = { px: {}, nav: {}, error: null };
+  const out = { px: {}, nav: {}, ib: {}, error: null };
+  // ib=SYM:CCY,... (10 at most: each can take several lookups)
+  await Promise.all(list("ib").slice(0, 10).map(async p => {
+    const [sym, ccy] = p.split(":"), k = sym + "|" + ccy;
+    try { out.ib[k] = await ibQuote(sym, (ccy || "USD").toUpperCase()); } catch (e) { out.ib[k] = { error: e.message }; }
+  }));
   await Promise.all(list("ltp").slice(0, 20).map(async s => {
     try { out.px[s] = await ltp(s); } catch (e) { out.px[s] = { error: e.message }; }
   }));
@@ -158,7 +183,7 @@ export default {
       }
     }
     const params = new URL(req.url).searchParams;
-    if (params.has("ltp") || params.has("isin")) return new Response(JSON.stringify(await live(params)), { headers: cors });
+    if (params.has("ltp") || params.has("isin") || params.has("ib")) return new Response(JSON.stringify(await live(params)), { headers: cors });
     const syms = (params.get("s") || "").split(",").map(s => s.trim()).filter(Boolean).slice(0, 20);
     const out = {};
     await Promise.all(syms.map(async s => { out[s] = await one(s); }));
