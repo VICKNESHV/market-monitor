@@ -6,7 +6,7 @@ const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&g
 const TYPES=["PPF","Fixed deposit","Other fixed income","Physical gold","Real estate","Other asset"];
 const KIND={"PPF":"fi","Fixed deposit":"fi","Other fixed income":"fi","Physical gold":"gold","Real estate":"re","Other asset":"gen"};
 const COL=["var(--up)","#3b82f6","var(--wa)","#8b5cf6","#14b8a6","#ec4899","#f97316","#eab308","#06b6d4","var(--mut)"];
-let IB=ls.get("mm_ibkr")||[],AS=(ls.get("mm_assets")||[]).map(x=>x.type==="Other"?{...x,type:"Other asset"}:x),FX=ls.get("mm_fx")||{},imsg="",amsg="",mopen=null;
+let IB=ls.get("mm_ibkr")||[],AS=(ls.get("mm_assets")||[]).map(x=>x.type==="Other"?{...x,type:"Other asset"}:x),FX=ls.get("mm_fx")||{},imsg="",amsg="",bmsg="",mopen=null;
 const mine=o=>who==="All"||o===who,today=()=>new Date().toISOString().slice(0,10);
 const macroLast=n=>{const x=(M.macro||[]).find(m=>m.name===n);return x?x.last:null};
 // INR per 1 unit: typed-in rate first, then USD/INR and EUR/USD×USD/INR from markets.json
@@ -181,7 +181,11 @@ function manage(){
 <select id="atype" ${sty}>${TYPES.map(t=>`<option>${t}</option>`).join("")}</select>
 <input type="text" id="aname" placeholder="Name (e.g. SBI PPF, Gold coins, Flat in Chennai)" style="margin-top:6px">
 <div id="afields">${fields("fi")}</div>
-<button id="aadd">Add asset</button><div class="mu" style="font-size:13px;margin-top:8px">${esc(amsg)}</div></div></details>`;
+<button id="aadd">Add asset</button><div class="mu" style="font-size:13px;margin-top:8px">${esc(amsg)}</div></div>
+<div class="card"><b>Backup</b>
+<p class="s">Everything on this tab is saved only in this browser, separately for each web address. Download a backup to keep a copy or to move it to another browser, device or address. Restoring replaces what is here.</p>
+<button id="bdl">Download backup</button><label class="btn">Restore backup<input type="file" id="brs" hidden></label>
+<div class="mu" style="font-size:13px;margin-top:8px">${esc(bmsg)}</div></div></details>`;
 }
 
 // ---------- Export as PDF: the browser's print dialog ("Save as PDF"), styled by a print stylesheet ----------
@@ -313,6 +317,29 @@ bindHoldings=()=>{
   document.querySelectorAll(".arm").forEach(b=>b.onclick=()=>{
     AS=AS.filter(a=>a.id!==b.dataset.i);lsSet("mm_assets",AS);show();
   });
+  // Backup: every saved setting and holding (localStorage keys starting "mm_") in one JSON file
+  $("bdl").onclick=()=>{
+    const data={};
+    try{for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k.startsWith("mm_"))data[k]=ls.get(k)}}catch(e){}
+    const a=document.createElement("a");
+    a.href=URL.createObjectURL(new Blob([JSON.stringify({app:"market-monitor",version:1,saved:new Date().toISOString(),data})],{type:"application/json"}));
+    a.download="market-monitor-backup-"+today()+".json";document.body.appendChild(a);a.click();a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+    bmsg=`Backup downloaded (${H.length} Zerodha, ${IB.length} IBKR and ${AS.length} other holdings).`;mopen=true;show();
+  };
+  $("brs").onchange=async e=>{
+    const file=e.target.files[0];if(!file)return;
+    try{
+      const b=JSON.parse(await file.text());
+      if(b.app!=="market-monitor"||!b.data||typeof b.data!=="object")throw new Error("this is not a Market Monitor backup file");
+      const d=b.data,count=k=>(d[k]||[]).length;
+      if(!confirm(`Replace the data in this browser with the backup from ${String(b.saved||"").slice(0,10)}? `+
+        `It has ${count("mm_holdings2")} Zerodha, ${count("mm_ibkr")} IBKR and ${count("mm_assets")} other holdings.`))return;
+      try{Object.keys(localStorage).filter(k=>k.startsWith("mm_")).forEach(k=>localStorage.removeItem(k))}catch(e){}
+      Object.keys(d).filter(k=>k.startsWith("mm_")).forEach(k=>lsSet(k,d[k]));
+      location.reload();   // start fresh from the restored data
+    }catch(err){bmsg="Restore failed: "+err.message;mopen=true;show()}
+  };
   sortTables();
   // Tap an LTP to show its source and time (hover tooltips don't exist on phones)
   document.querySelectorAll("#v td.pxsrc").forEach(td=>td.onclick=()=>{const o=td.querySelector(".srcl");
