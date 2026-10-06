@@ -277,7 +277,7 @@ const pxStale=()=>Date.now()-Math.max(+new Date(P.at||0),pxTry)>=15*60e3;
 async function refreshPrices(){
  if(!W||pxBusy)return;
  pxBusy=true;pxTry=Date.now();
- const syms=[...new Set(H.filter(h=>!h.isMutualFund).map(h=>h.sym))],isins=[...new Set(H.filter(h=>h.isin).map(h=>h.isin))];
+ const syms=[...new Set(H.filter(h=>!h.isMutualFund).map(h=>h.sym))],isins=[...new Set(H.filter(h=>h.isMutualFund&&h.isin).map(h=>h.isin))];   // only funds: AMFI has no stock prices
  let gd=null;const np={},nn={},url=q=>W+(W.includes("?")?"&":"?")+q;
  try{
   for(let i=0;i<Math.max(syms.length,1);i+=20){
