@@ -91,7 +91,7 @@ function totalCard(){
   const L=IB.filter(x=>mine(x.owner)),noRate=[...new Set(L.filter(x=>!rate(x.ccy)).map(x=>x.ccy))];
   const ibv=sum(L.map(x=>{const r=rate(x.ccy);return r?x.qty*ibPx(x)*r:0}));
   const A2=AS.filter(x=>mine(x.owner)),bt=t=>sum(A2.filter(x=>x.type===t).map(x=>calc(x).val));
-  const cls=[["Zerodha equities",ze],["Zerodha mutual funds",zm],["Zerodha gold & silver",zg],["IBKR (in ₹)",ibv],...TYPES.map(t=>[t,bt(t)])].filter(c=>c[1]);
+  const cls=[["Zerodha equities",ze],["Zerodha mutual funds",zm],["Zerodha gold & silver",zg],["IBKR (in ₹)",ibv],...TYPES.map(t=>[t,bt(t)])].filter(c=>c[1]).sort((a,b)=>b[1]-a[1]);
   const tv=sum(cls.map(c=>c[1]));
   if(!tv)return "";
   const gold=zg+bt("Physical gold"),full=inr(tv);
@@ -241,6 +241,31 @@ addEventListener("afterprint",()=>{document.title=_title;document.querySelectorA
 const _h=holdings,_b=bindHoldings,_sv=save;
 save=(...a)=>{_sv(...a);mopen=true};
 holdings=()=>`<div class="printonly" id="prhd"></div><div class="noprint" style="text-align:right"><button id="pdf">Export PDF</button></div>`+totalCard()+_h()+ibCard()+assetCard()+manage();
+// ---------- Click a column header to sort a Holdings table; click again to reverse ----------
+// The order is remembered per table (Zerodha equities/funds/gold, IBKR, other assets) across redraws.
+const SORT=ls.get("mm_sort")||{};
+const cellVal=td=>{const t=td.textContent.replace(/[₹,%*+\s]/g,"");return /^-?\d+(\.\d+)?$/.test(t)?parseFloat(t):td.textContent.trim().toLowerCase()};   // "₹1,400.50 *" → 1400.5, "4GLD" stays text
+function sortTables(){
+  document.querySelectorAll("#v table").forEach(t=>{
+    const head=t.rows[0];if(!head||!head.cells[0]||head.cells[0].tagName!=="TH")return;
+    const box=t.closest(".table-section"),key=(box&&box.querySelector("[data-section]")?.dataset.section)||t.closest("details.sec")?.dataset.k;
+    if(!key)return;
+    const rows=[...t.rows].slice(1),apply=()=>{
+      const st=SORT[key];
+      [...head.cells].forEach((th,i)=>{th.dataset.lab=th.dataset.lab||th.textContent;th.textContent=th.dataset.lab+(st&&st.c===i?(st.d>0?" ▲":" ▼"):"")});
+      if(!st||!head.cells[st.c])return;
+      const blank=v=>v===""||v==="—";
+      rows.sort((a,b)=>{const x=cellVal(a.cells[st.c]),y=cellVal(b.cells[st.c]);
+        if(blank(x)!==blank(y))return blank(x)?1:-1;   // empty cells last either way
+        return (typeof x==="number"&&typeof y==="number"?x-y:String(x).localeCompare(String(y)))*st.d}).forEach(r=>r.parentNode.appendChild(r));
+    };
+    [...head.cells].forEach((th,i)=>{if(!th.textContent.trim())return;th.style.cursor="pointer";th.title="Sort";
+      th.onclick=()=>{const st=SORT[key];
+        SORT[key]=st&&st.c===i?{c:i,d:-st.d}:{c:i,d:typeof cellVal(rows[0]?.cells[i]||head.cells[i])==="number"?-1:1};   // numbers start high to low, names A to Z
+        lsSet("mm_sort",SORT);apply()}});
+    apply();
+  });
+}
 bindHoldings=()=>{
   window.__pfp=false;
   _b();
@@ -295,6 +320,7 @@ bindHoldings=()=>{
   document.querySelectorAll(".arm").forEach(b=>b.onclick=()=>{
     AS=AS.filter(a=>a.id!==b.dataset.i);lsSet("mm_assets",AS);show();
   });
+  sortTables();
 };
 // redraw if the page rendered before this script loaded
 if(document.getElementById("v").innerHTML)show();
